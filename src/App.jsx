@@ -2186,7 +2186,30 @@ const LoginPage = ({ onLogin }) => {
   const wrap = {
     minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
     background: "linear-gradient(135deg,#0f172a 0%,#1e3a5f 50%,#0f172a 100%)", padding: 24,
+    position: "relative", overflow: "hidden",
   }
+  const STARS = [
+    { w:2, top:"8%",  left:"1%",  dur:"20s", delay:"0s"   },
+    { w:3, top:"22%", left:"5%",  dur:"26s", delay:"2s"   },
+    { w:2, top:"45%", left:"2%",  dur:"22s", delay:"5s"   },
+    { w:4, top:"68%", left:"4%",  dur:"30s", delay:"1s"   },
+    { w:2, top:"85%", left:"7%",  dur:"24s", delay:"7s"   },
+    { w:3, top:"15%", left:"11%", dur:"28s", delay:"3s"   },
+    { w:2, top:"55%", left:"9%",  dur:"19s", delay:"9s"   },
+    { w:5, top:"33%", left:"3%",  dur:"34s", delay:"4s"   },
+    { w:2, top:"75%", left:"6%",  dur:"23s", delay:"6s"   },
+    { w:3, top:"5%",  left:"14%", dur:"27s", delay:"11s"  },
+    { w:2, top:"92%", left:"12%", dur:"21s", delay:"8s"   },
+    { w:4, top:"40%", left:"8%",  dur:"32s", delay:"13s"  },
+    { w:2, top:"60%", left:"15%", dur:"18s", delay:"2.5s" },
+    { w:3, top:"28%", left:"10%", dur:"29s", delay:"15s"  },
+    { w:2, top:"80%", left:"0%",  dur:"25s", delay:"10s"  },
+    { w:3, top:"18%", left:"16%", dur:"22s", delay:"12s"  },
+    { w:2, top:"50%", left:"13%", dur:"20s", delay:"16s"  },
+    { w:4, top:"70%", left:"2%",  dur:"31s", delay:"14s"  },
+    { w:2, top:"10%", left:"17%", dur:"19s", delay:"17s"  },
+    { w:3, top:"95%", left:"8%",  dur:"27s", delay:"19s"  },
+  ]
   const card = {
     width: "100%", maxWidth: 420, background: "rgba(255,255,255,0.97)",
     borderRadius: 20, padding: "40px 36px", boxShadow: "0 25px 50px rgba(0,0,0,0.45)",
@@ -2213,7 +2236,20 @@ const LoginPage = ({ onLogin }) => {
 
   return (
     <div style={wrap}>
-      <div style={card}>
+      {STARS.map((s, i) => (
+        <span key={i} style={{
+          position: "absolute",
+          width: s.w, height: s.w,
+          top: s.top, left: s.left,
+          borderRadius: "50%",
+          background: "radial-gradient(circle, rgba(255,255,255,0.95) 0%, rgba(147,197,253,0.5) 55%, transparent 100%)",
+          boxShadow: `0 0 ${s.w * 3}px ${s.w}px rgba(147,197,253,0.25)`,
+          animation: `cspms-float ${s.dur} linear ${s.delay} infinite`,
+          pointerEvents: "none",
+          zIndex: 0,
+        }} />
+      ))}
+      <div style={{ ...card, position: "relative", zIndex: 1 }}>
 
         {/* Brand header */}
         <div style={{ textAlign: "center", marginBottom: 30 }}>
