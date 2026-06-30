@@ -1,4 +1,18 @@
-"use client"
+// =============================================================================
+// src/App.jsx  —  CSPMS complete application
+//
+// Self-contained: auth utilities, login/signup/forgot-password UI,
+// all dashboard pages, sidebar, topnav, charts, filters.
+//
+// ⚠️  AUTH NOTE — localStorage prototype:
+//     User sessions are stored in browser localStorage.
+//     Replace with Supabase / Firebase / Auth0 / backend JWT
+//     before giving external users access or storing real company data.
+//
+// Dependencies (add to package.json if missing):
+//   npm install react react-dom recharts lucide-react
+// =============================================================================
+
 import { useState, useRef, useEffect } from "react"
 import {
   BarChart, Bar, LineChart, Line, AreaChart, Area,
@@ -16,14 +30,64 @@ import {
 // ─────────────────────────────────────────────
 // MOCK AUTH — users, roles, permissions
 // ─────────────────────────────────────────────
-const MOCK_USERS = [
-  { id: 1, name: "Admin User",       initials: "AU", role: "HEAD",      email: "usamaahmed.esire@gmail.com", password: "Admin123"  },
-  { id: 2, name: "Team Lead User",   initials: "TL", role: "Team Lead", email: "lead@cspms.com",             password: "Lead123"   },
-  { id: 3, name: "Muhammad Junaid",  initials: "MJ", role: "Agent",     email: "hm.junaid.esire@gmail.com",  password: "Agent123"  },
-  { id: 4, name: "Anum Aziz",        initials: "AA", role: "Agent",     email: "anum.esire@gmail.com",       password: "Agent123"  },
-  { id: 5, name: "Sufiyan Merchant", initials: "SM", role: "Agent",     email: "sufiyan.esire@gmail.com",    password: "Agent123"  },
-  { id: 6, name: "Adeel Hyder",      initials: "AH", role: "Agent",     email: "adeel.esire@gmail.com",      password: "Agent123"  },
-]
+// ─────────────────────────────────────────────────────────────────────────────
+// AUTH UTILITIES  ·  localStorage prototype
+//
+// ⚠️  TEMPORARY — browser-only prototype storage.
+//     Before real company use, replace with one of:
+//       • Supabase  → supabase.com/docs/guides/auth
+//       • Firebase  → firebase.google.com/docs/auth
+//       • Auth0     → auth0.com/docs/quickstart/spa/react
+//       • Custom backend JWT (Express / FastAPI / Django)
+//     Passwords are stored in plain text in localStorage.
+//     This is acceptable for a private internal prototype only.
+// ─────────────────────────────────────────────────────────────────────────────
+const _AUTH_USERS_KEY   = "cspms_auth_users"
+const _AUTH_SESSION_KEY = "cspms_auth_session"
+
+const _authGetUsers    = () => { try { return JSON.parse(localStorage.getItem(_AUTH_USERS_KEY)   || "[]")   } catch { return []   } }
+const _authGetSession  = () => { try { return JSON.parse(localStorage.getItem(_AUTH_SESSION_KEY) || "null") } catch { return null } }
+const _authSaveSession = (u) => localStorage.setItem(_AUTH_SESSION_KEY, JSON.stringify(u))
+const _authClearSession= () => localStorage.removeItem(_AUTH_SESSION_KEY)
+
+const _authInitials = (name) =>
+  (name || "").trim().split(/\s+/).filter(Boolean).map(w => w[0].toUpperCase()).join("").slice(0, 2) || "??"
+
+const _authSignUp = (name, email, password) => {
+  const users = _authGetUsers()
+  if (users.find(u => u.email === email.trim().toLowerCase()))
+    throw new Error("An account with this email already exists.")
+  const user = {
+    id:        Date.now(),
+    name:      name.trim(),
+    initials:  _authInitials(name.trim()),
+    role:      "Agent",          // new accounts default to Agent; change role in DB after real auth
+    email:     email.trim().toLowerCase(),
+    password,                    // ⚠️ plain-text — prototype only
+    createdAt: new Date().toISOString(),
+  }
+  localStorage.setItem(_AUTH_USERS_KEY, JSON.stringify([...users, user]))
+  const { password: _p, ...session } = user
+  _authSaveSession(session)
+  return session
+}
+
+const _authSignIn = (email, password) => {
+  const users = _authGetUsers()
+  const user  = users.find(u => u.email === email.trim().toLowerCase() && u.password === password)
+  if (!user) throw new Error("Incorrect email or password.")
+  const { password: _p, ...session } = user
+  _authSaveSession(session)
+  return session
+}
+
+const _authChangePassword = (email, currentPwd, newPwd) => {
+  const users   = _authGetUsers()
+  const target  = users.find(u => u.email === email.toLowerCase() && u.password === currentPwd)
+  if (!target)  throw new Error("Current password is incorrect.")
+  const updated = users.map(u => u.id === target.id ? { ...u, password: newPwd } : u)
+  localStorage.setItem(_AUTH_USERS_KEY, JSON.stringify(updated))
+}
 
 const ROLE_PERMISSIONS = {
   "HEAD": {
@@ -2063,318 +2127,279 @@ const ProfilePage = ({ dark, currentUser }) => {
 }
 
 // ─────────────────────────────────────────────
-// LOGIN PAGE
+// LOGIN PAGE  —  professional, localStorage-backed
 // ─────────────────────────────────────────────
-// ─── LoginShell — defined OUTSIDE LoginPage to prevent remount on re-render ───
-const LoginShell = ({ children }) => (
-  <div className="min-h-screen flex items-center justify-center"
-    style={{ background: "linear-gradient(135deg,#0f172a 0%,#1e3a5f 50%,#0f172a 100%)" }}>
-    <div className="w-full max-w-md px-4">
-      <div className="text-center mb-8">
-        <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
-          style={{ background: "linear-gradient(135deg,#3B82F6,#2563EB)", boxShadow: "0 8px 32px rgba(59,130,246,0.5)" }}>
-          <BarChart2 size={28} color="#fff" />
-        </div>
-        <h1 className="text-2xl font-bold text-white mb-1">CSPMS</h1>
-        <p className="text-sm" style={{ color: "#94a3b8" }}>Customer Support Performance Management</p>
-      </div>
-      {children}
-    </div>
-  </div>
-)
+const LoginPage = ({ onLogin }) => {
+  const [mode,     setMode]     = useState("login")   // "login" | "signup" | "forgot"
+  const [name,     setName]     = useState("")
+  const [email,    setEmail]    = useState("")
+  const [password, setPassword] = useState("")
+  const [confirm,  setConfirm]  = useState("")
+  const [error,    setError]    = useState("")
+  const [info,     setInfo]     = useState("")
+  const [loading,  setLoading]  = useState(false)
+  const [showPwd,  setShowPwd]  = useState(false)
 
-const LoginPage = ({ onLogin, onSignUp, users = MOCK_USERS }) => {
-  // ── mode: "login" | "signup" | "done" ──────────────────────────────────────
-  const [mode,          setMode]          = useState("login")
+  const switchMode = (m) => { setMode(m); setError(""); setInfo(""); setName(""); setEmail(""); setPassword(""); setConfirm("") }
+  const isValidEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim())
 
-  // ── login fields ────────────────────────────────────────────────────────────
-  const [loginEmail,    setLoginEmail]    = useState("")
-  const [loginPassword, setLoginPassword] = useState("")
-  const [loginError,    setLoginError]    = useState("")
-  const [showDemo,      setShowDemo]      = useState(false)
+  const handleLogin = async (ev) => {
+    ev.preventDefault(); setError("")
+    if (!isValidEmail(email)) return setError("Please enter a valid email address.")
+    if (!password)            return setError("Please enter your password.")
+    setLoading(true)
+    await new Promise(r => setTimeout(r, 400))
+    try   { onLogin(_authSignIn(email, password)) }
+    catch (err) { setError(err.message) }
+    setLoading(false)
+  }
 
-  // ── signup fields — separate state vars to prevent focus loss ───────────────
-  const [signupName,     setSignupName]     = useState("")
-  const [signupEmail,    setSignupEmail]    = useState("")
-  const [signupPassword, setSignupPassword] = useState("")
-  const [signupConfirm,  setSignupConfirm]  = useState("")
-  const [signupError,    setSignupError]    = useState("")
-  // ── forgot password fields ───────────────────────────────────────────────────
-  const [forgotEmail,    setForgotEmail]    = useState("")
-  const [forgotSent,     setForgotSent]     = useState(false)
+  const handleSignUp = async (ev) => {
+    ev.preventDefault(); setError("")
+    if (!name.trim())         return setError("Please enter your full name.")
+    if (!isValidEmail(email)) return setError("Please enter a valid email address.")
+    if (password.length < 8)  return setError("Password must be at least 8 characters.")
+    if (password !== confirm)  return setError("Passwords do not match.")
+    setLoading(true)
+    await new Promise(r => setTimeout(r, 400))
+    try   { onLogin(_authSignUp(name, email, password)) }
+    catch (err) { setError(err.message) }
+    setLoading(false)
+  }
+
+  const handleForgot = (ev) => {
+    ev.preventDefault(); setError(""); setInfo("")
+    if (!isValidEmail(email)) return setError("Please enter a valid email address.")
+    // ── TODO: wire up a real email service before enabling password reset ──────
+    // Steps when ready:
+    //   1. POST /api/auth/forgot-password  { email }
+    //   2. Server generates a signed token, stores with expiry, sends email via
+    //      SendGrid / Resend / SES / Supabase Auth resetPasswordForEmail()
+    //   3. User clicks link → /reset-password?token=...
+    //   4. Server verifies token, allows new password entry
+    // ──────────────────────────────────────────────────────────────────────────
+    // Until then: do NOT pretend the email was sent (that would mislead users).
+    setInfo("Password reset is not yet active — email service is not configured. Please contact your system administrator to reset your password.")
+  }
 
   // ── shared styles ────────────────────────────────────────────────────────────
-  const cardStyle = { background: "rgba(255,255,255,0.05)", backdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.1)" }
-  const inpStyle  = { background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0", outline: "none" }
-  const lblStyle  = { color: "#94a3b8" }
-  const btnPrimary = { background: "linear-gradient(135deg,#3B82F6,#2563EB)", boxShadow: "0 4px 20px rgba(59,130,246,0.4)" }
-
-  // ── login handler ────────────────────────────────────────────────────────────
-  const handleLogin = () => {
-    const match = users.find(
-      u => u.email.toLowerCase() === loginEmail.trim().toLowerCase() && u.password === loginPassword
-    )
-    if (!match) { setLoginError("Invalid email or password."); return }
-    setLoginError("")
-    onLogin?.(match)
+  const wrap = {
+    minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
+    background: "linear-gradient(135deg,#0f172a 0%,#1e3a5f 50%,#0f172a 100%)", padding: 24,
+  }
+  const card = {
+    width: "100%", maxWidth: 420, background: "rgba(255,255,255,0.97)",
+    borderRadius: 20, padding: "40px 36px", boxShadow: "0 25px 50px rgba(0,0,0,0.45)",
+    boxSizing: "border-box",
+  }
+  const inp = (extra = {}) => ({
+    width: "100%", padding: "11px 14px", borderRadius: 10, fontSize: 14,
+    border: "1px solid #e2e8f0", outline: "none", background: "#f8fafc",
+    color: "#0f172a", boxSizing: "border-box", ...extra,
+  })
+  const label = { display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6 }
+  const fld   = { marginBottom: 16 }
+  const btnPrimary = {
+    width: "100%", padding: "13px 0", borderRadius: 12, border: "none",
+    background: "linear-gradient(135deg,#3B82F6,#1D4ED8)", color: "#fff",
+    fontSize: 15, fontWeight: 700, cursor: loading ? "wait" : "pointer",
+    boxShadow: "0 4px 14px rgba(59,130,246,0.4)", opacity: loading ? 0.75 : 1,
+    marginTop: 4,
+  }
+  const linkBtn = {
+    background: "none", border: "none", cursor: "pointer",
+    color: "#3B82F6", fontWeight: 600, fontSize: 13, padding: 0,
   }
 
-  const handleDemoLogin = (role) => {
-    const user = MOCK_USERS.find(u => u.role === role)
-    if (user) onLogin?.(user)
-  }
-
-  // ── signup handler ───────────────────────────────────────────────────────────
-  const handleSignUp = () => {
-    if (!signupName.trim())               { setSignupError("Full name is required."); return }
-    if (!signupEmail.trim())              { setSignupError("Email is required."); return }
-    if (!signupPassword)                  { setSignupError("Password is required."); return }
-    if (signupPassword.length < 6)        { setSignupError("Password must be at least 6 characters."); return }
-    if (signupPassword !== signupConfirm) { setSignupError("Passwords do not match."); return }
-    setSignupError("")
-    const parts    = signupName.trim().split(" ")
-    const initials = ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "AG"
-    onSignUp?.({ id: Date.now(), name: signupName.trim(), initials, role: "Agent", email: signupEmail.trim(), status: "pending" })
-    setMode("done")
-  }
-
-  // ── forgot password — done screen ───────────────────────────────────────────
-  if (mode === "forgot-done") return (
-    <LoginShell>
-      <div className="rounded-2xl p-8 text-center" style={cardStyle}>
-        <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4"
-          style={{ background: "rgba(59,130,246,0.12)" }}>
-          <Mail size={26} color="#3B82F6" />
-        </div>
-        <h2 className="text-xl font-bold text-white mb-2">Check Your Email</h2>
-        <div className="rounded-xl px-4 py-3 my-4 text-sm"
-          style={{ background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.25)", color: "#93c5fd" }}>
-          If this email exists, password reset instructions have been sent.
-        </div>
-        <button type="button"
-          onClick={() => { setMode("login"); setForgotEmail(""); setForgotSent(false) }}
-          className="w-full py-3 rounded-xl text-sm font-bold text-white" style={btnPrimary}>
-          Back to Sign In
-        </button>
-      </div>
-    </LoginShell>
-  )
-
-  // ── forgot password — form ────────────────────────────────────────────────────
-  if (mode === "forgot") return (
-    <LoginShell>
-      <div className="rounded-2xl p-8" style={cardStyle}>
-        <h2 className="text-xl font-bold text-white mb-1">Forgot Password</h2>
-        <p className="text-sm mb-6" style={lblStyle}>Enter your email and we&apos;ll send reset instructions.</p>
-
-        <div className="mb-5">
-          <label className="block text-xs font-semibold mb-1.5" style={lblStyle}>Email Address</label>
-          <input type="email" value={forgotEmail} onChange={e => setForgotEmail(e.target.value)}
-            placeholder="you@cspms.com"
-            className="w-full rounded-xl py-3 px-4 text-sm" style={inpStyle}
-            onKeyDown={e => e.key === "Enter" && (setMode("forgot-done"))} />
-        </div>
-
-        <button type="button" onClick={() => setMode("forgot-done")}
-          className="w-full py-3 rounded-xl text-sm font-bold text-white mb-3" style={btnPrimary}>
-          Send Reset Instructions
-        </button>
-        <button type="button" onClick={() => { setMode("login"); setForgotEmail("") }}
-          className="w-full py-2 text-sm" style={{ color: "#94a3b8" }}>
-          ← Back to Sign In
-        </button>
-      </div>
-    </LoginShell>
-  )
-
-  // ── success screen ───────────────────────────────────────────────────────────
-  if (mode === "done") return (
-    <LoginShell>
-      <div className="rounded-2xl p-8 text-center" style={cardStyle}>
-        <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4"
-          style={{ background: "rgba(16,185,129,0.15)" }}>
-          <CheckCircle size={28} color="#10B981" />
-        </div>
-        <h2 className="text-xl font-bold text-white mb-2">Account Requested</h2>
-        <div className="rounded-xl px-4 py-3 my-4 text-sm"
-          style={{ background: "rgba(59,130,246,0.12)", border: "1px solid rgba(59,130,246,0.25)", color: "#93c5fd" }}>
-          Account created. Admin approval is required before access.
-        </div>
-        <button type="button"
-          onClick={() => { setMode("login"); setSignupName(""); setSignupEmail(""); setSignupPassword(""); setSignupConfirm("") }}
-          className="w-full py-3 rounded-xl text-sm font-bold text-white" style={btnPrimary}>
-          Back to Sign In
-        </button>
-      </div>
-    </LoginShell>
-  )
-
-  // ── signup form ──────────────────────────────────────────────────────────────
-  if (mode === "signup") return (
-    <LoginShell>
-      <div className="rounded-2xl p-8" style={cardStyle}>
-        <h2 className="text-xl font-bold text-white mb-1">Create Account</h2>
-        <p className="text-sm mb-6" style={lblStyle}>New accounts are assigned Agent role by default.</p>
-
-        <div className="mb-4">
-          <label className="block text-xs font-semibold mb-1.5" style={lblStyle}>Full Name</label>
-          <input type="text" value={signupName} onChange={e => setSignupName(e.target.value)}
-            placeholder="Muhammad Junaid"
-            className="w-full rounded-xl py-3 px-4 text-sm" style={inpStyle} />
-        </div>
-        <div className="mb-4">
-          <label className="block text-xs font-semibold mb-1.5" style={lblStyle}>Email</label>
-          <input type="email" value={signupEmail} onChange={e => setSignupEmail(e.target.value)}
-            placeholder="you@company.com"
-            className="w-full rounded-xl py-3 px-4 text-sm" style={inpStyle} />
-        </div>
-        <div className="mb-4">
-          <label className="block text-xs font-semibold mb-1.5" style={lblStyle}>Password</label>
-          <input type="password" value={signupPassword} onChange={e => setSignupPassword(e.target.value)}
-            placeholder="Min 6 characters"
-            className="w-full rounded-xl py-3 px-4 text-sm" style={inpStyle} />
-        </div>
-        <div className="mb-4">
-          <label className="block text-xs font-semibold mb-1.5" style={lblStyle}>Confirm Password</label>
-          <input type="password" value={signupConfirm} onChange={e => setSignupConfirm(e.target.value)}
-            placeholder="Re-enter password"
-            className="w-full rounded-xl py-3 px-4 text-sm" style={inpStyle} />
-        </div>
-
-        <div className="mb-5">
-          <label className="block text-xs font-semibold mb-1.5" style={lblStyle}>Role Request</label>
-          <div className="w-full rounded-xl py-3 px-4 text-sm flex items-center gap-2"
-            style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", opacity: 0.7 }}>
-            <Shield size={14} color="#94a3b8" />
-            <span style={{ color: "#94a3b8" }}>Agent — HEAD assigns higher roles</span>
-          </div>
-        </div>
-
-        {signupError && (
-          <div className="mb-4 rounded-xl px-4 py-2.5 text-xs"
-            style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.3)", color: "#fca5a5" }}>
-            {signupError}
-          </div>
-        )}
-
-        <button type="button" onClick={handleSignUp}
-          className="w-full py-3 rounded-xl text-sm font-bold text-white mb-3" style={btnPrimary}>
-          Create Account
-        </button>
-        <button type="button" onClick={() => { setMode("login"); setSignupError("") }}
-          className="w-full py-2 text-sm" style={{ color: "#94a3b8" }}>
-          ← Back to Sign In
-        </button>
-      </div>
-    </LoginShell>
-  )
-
-  // ── login screen ─────────────────────────────────────────────────────────────
   return (
-    <LoginShell>
-      <div className="rounded-2xl p-8" style={cardStyle}>
-        <h2 className="text-xl font-bold text-white mb-1">Sign In</h2>
-        <p className="text-sm mb-6" style={lblStyle}>Enter your credentials to continue</p>
+    <div style={wrap}>
+      <div style={card}>
 
-        <div className="mb-4">
-          <label className="block text-xs font-semibold mb-1.5" style={lblStyle}>Email</label>
-          <input type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)}
-            placeholder="you@cspms.com"
-            className="w-full rounded-xl py-3 px-4 text-sm" style={inpStyle}
-            onKeyDown={e => e.key === "Enter" && handleLogin()} />
-        </div>
-        <div className="mb-2">
-          <label className="block text-xs font-semibold mb-1.5" style={lblStyle}>Password</label>
-          <input type="password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)}
-            placeholder="Your password"
-            className="w-full rounded-xl py-3 px-4 text-sm" style={inpStyle}
-            onKeyDown={e => e.key === "Enter" && handleLogin()} />
-        </div>
-        <div className="flex justify-end mb-5">
-          <button type="button" onClick={() => { setMode("forgot"); setLoginError("") }}
-            className="text-xs font-semibold" style={{ color: "#3B82F6" }}>
-            Forgot Password?
-          </button>
+        {/* Brand header */}
+        <div style={{ textAlign: "center", marginBottom: 30 }}>
+          <div style={{
+            width: 52, height: 52, borderRadius: 14, margin: "0 auto 14px",
+            background: "linear-gradient(135deg,#3B82F6,#1D4ED8)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            boxShadow: "0 8px 20px rgba(59,130,246,0.4)",
+          }}>
+            <span style={{ color: "#fff", fontWeight: 800, fontSize: 20, letterSpacing: -1 }}>CS</span>
+          </div>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "#0f172a", letterSpacing: -0.5 }}>CSPMS</h1>
+          <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: 13 }}>
+            Customer Support Performance Management
+          </p>
         </div>
 
-        {loginError && (
-          <div className="mb-4 rounded-xl px-4 py-2.5 text-xs"
-            style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.3)", color: "#fca5a5" }}>
-            {loginError}
+        {/* Section heading */}
+        <h2 style={{ margin: "0 0 22px", fontSize: 17, fontWeight: 700, color: "#1e293b" }}>
+          {mode === "login"  ? "Sign in to your account" :
+           mode === "signup" ? "Create an account"        :
+                               "Reset your password"}
+        </h2>
+
+        {/* Error banner */}
+        {error && (
+          <div style={{
+            background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 10,
+            padding: "10px 14px", marginBottom: 18, color: "#DC2626", fontSize: 13,
+          }}>
+            {error}
           </div>
         )}
 
-        <button type="button" onClick={handleLogin}
-          className="w-full py-3 rounded-xl text-sm font-bold text-white mb-4" style={btnPrimary}>
-          Sign In
-        </button>
+        {/* Info banner */}
+        {info && (
+          <div style={{
+            background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 10,
+            padding: "10px 14px", marginBottom: 18, color: "#1D4ED8", fontSize: 13, lineHeight: 1.5,
+          }}>
+            {info}
+          </div>
+        )}
 
-        {/* Demo login — hidden by default */}
-        <div className="mb-4">
-          <button type="button" onClick={() => setShowDemo(d => !d)}
-            className="w-full py-2 text-xs rounded-xl transition-all"
-            style={{ color: "#64748b", border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.03)" }}>
-            {showDemo ? "Hide Demo Login ↑" : "Use Demo Login ↓"}
-          </button>
-          {showDemo && (
-            <div className="mt-2 space-y-2">
-              {[
-                { label: "HEAD Demo",      role: "HEAD" },
-                { label: "Team Lead Demo", role: "Team Lead" },
-                { label: "Agent Demo",     role: "Agent"     },
-              ].map(d => (
-                <button key={d.role} type="button" onClick={() => handleDemoLogin(d.role)}
-                  className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl text-sm text-left transition-all"
-                  style={{ background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.18)", color: "#93c5fd" }}>
-                  <span className="font-semibold">{d.label}</span>
-                  <span className="text-xs" style={{ color: "#64748b" }}>{d.role}</span>
-                </button>
-              ))}
+        {/* ── LOGIN ── */}
+        {mode === "login" && (
+          <form onSubmit={handleLogin} noValidate>
+            <div style={fld}>
+              <label style={label}>Email</label>
+              <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                placeholder="you@company.com" autoComplete="email" style={inp()} />
             </div>
-          )}
+            <div style={fld}>
+              <label style={label}>Password</label>
+              <div style={{ position: "relative" }}>
+                <input type={showPwd ? "text" : "password"} value={password}
+                  onChange={e => setPassword(e.target.value)} placeholder="Enter your password"
+                  autoComplete="current-password" style={inp({ paddingRight: 52 })} />
+                <button type="button" onClick={() => setShowPwd(p => !p)}
+                  style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
+                    background: "none", border: "none", cursor: "pointer", color: "#94a3b8", fontSize: 12, fontWeight: 600 }}>
+                  {showPwd ? "Hide" : "Show"}
+                </button>
+              </div>
+            </div>
+            <div style={{ textAlign: "right", marginBottom: 20, marginTop: -8 }}>
+              <button type="button" onClick={() => switchMode("forgot")} style={linkBtn}>
+                Forgot password?
+              </button>
+            </div>
+            <button type="submit" style={btnPrimary} disabled={loading}>
+              {loading ? "Signing in…" : "Sign In"}
+            </button>
+            <p style={{ textAlign: "center", marginTop: 20, fontSize: 13, color: "#64748b" }}>
+              Don&apos;t have an account?{" "}
+              <button type="button" onClick={() => switchMode("signup")} style={linkBtn}>Create one</button>
+            </p>
+          </form>
+        )}
+
+        {/* ── SIGN UP ── */}
+        {mode === "signup" && (
+          <form onSubmit={handleSignUp} noValidate>
+            <div style={fld}>
+              <label style={label}>Full Name</label>
+              <input type="text" value={name} onChange={e => setName(e.target.value)}
+                placeholder="Your full name" autoComplete="name" style={inp()} />
+            </div>
+            <div style={fld}>
+              <label style={label}>Email</label>
+              <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                placeholder="you@company.com" autoComplete="email" style={inp()} />
+            </div>
+            <div style={fld}>
+              <label style={label}>
+                Password
+                <span style={{ fontWeight: 400, color: "#94a3b8", marginLeft: 6, fontSize: 12 }}>
+                  (min. 8 characters)
+                </span>
+              </label>
+              <div style={{ position: "relative" }}>
+                <input type={showPwd ? "text" : "password"} value={password}
+                  onChange={e => setPassword(e.target.value)} placeholder="Create a password"
+                  autoComplete="new-password" style={inp({ paddingRight: 52 })} />
+                <button type="button" onClick={() => setShowPwd(p => !p)}
+                  style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
+                    background: "none", border: "none", cursor: "pointer", color: "#94a3b8", fontSize: 12, fontWeight: 600 }}>
+                  {showPwd ? "Hide" : "Show"}
+                </button>
+              </div>
+            </div>
+            <div style={fld}>
+              <label style={label}>Confirm Password</label>
+              <input type={showPwd ? "text" : "password"} value={confirm}
+                onChange={e => setConfirm(e.target.value)} placeholder="Repeat your password"
+                autoComplete="new-password" style={inp()} />
+            </div>
+            <div style={{ marginBottom: 20, padding: "10px 14px", borderRadius: 10,
+              background: "#F0FDF4", border: "1px solid #BBF7D0", fontSize: 12, color: "#166534" }}>
+              New accounts are assigned the <strong>Agent</strong> role. Contact your administrator to change roles.
+            </div>
+            <button type="submit" style={btnPrimary} disabled={loading}>
+              {loading ? "Creating account…" : "Create Account"}
+            </button>
+            <p style={{ textAlign: "center", marginTop: 20, fontSize: 13, color: "#64748b" }}>
+              Already have an account?{" "}
+              <button type="button" onClick={() => switchMode("login")} style={linkBtn}>Sign in</button>
+            </p>
+          </form>
+        )}
+
+        {/* ── FORGOT PASSWORD ── */}
+        {mode === "forgot" && (
+          <form onSubmit={handleForgot} noValidate>
+            <p style={{ fontSize: 13, color: "#64748b", marginBottom: 20, lineHeight: 1.6 }}>
+              Enter your account email address below. Password reset requires an email service
+              to be configured by your administrator.
+            </p>
+            <div style={fld}>
+              <label style={label}>Email</label>
+              <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                placeholder="you@company.com" autoComplete="email" style={inp()} />
+            </div>
+            <button type="submit" style={{ ...btnPrimary, opacity: 1 }}>
+              Request Password Reset
+            </button>
+            <p style={{ textAlign: "center", marginTop: 20, fontSize: 13, color: "#64748b" }}>
+              Remembered it?{" "}
+              <button type="button" onClick={() => switchMode("login")} style={linkBtn}>Back to sign in</button>
+            </p>
+          </form>
+        )}
+
+        {/* Footer */}
+        <div style={{
+          marginTop: 28, paddingTop: 18, borderTop: "1px solid #f1f5f9",
+          textAlign: "center", fontSize: 11, color: "#94a3b8",
+        }}>
+          Secure access — CSPMS v1.0
         </div>
 
-        <div className="text-center pt-1">
-          <span className="text-sm" style={{ color: "#64748b" }}>Don&apos;t have an account? </span>
-          <button type="button" onClick={() => { setMode("signup"); setLoginError("") }}
-            className="text-sm font-semibold" style={{ color: "#3B82F6" }}>
-            Create Account
-          </button>
-        </div>
       </div>
-    </LoginShell>
+    </div>
   )
 }
+
 // ─────────────────────────────────────────────
 // ROOT APP — standalone preview (state routing)
 // ─────────────────────────────────────────────
 export default function App() {
-  const [page,         setPage]         = useState("dashboard")
-  const [dark,         setDark]         = useState(false)
-  const [currentUser,  setCurrentUser]  = useState(null)
-  const [pendingUsers, setPendingUsers] = useState([])
-  const [userStore,    setUserStore]    = useState([...MOCK_USERS])  // mutable auth store
+  const [page,        setPage]        = useState("dashboard")
+  const [dark,        setDark]        = useState(false)
+  // ── Session loaded from localStorage on mount — persists across page reloads ─
+  const [currentUser, setCurrentUser] = useState(() => _authGetSession())
 
-  const handleLogin   = (user) => { setCurrentUser(user); setPage("dashboard") }
-  const handleLogout  = ()     => { setCurrentUser(null); setPage("dashboard") }
-  const handleSignUp  = (newUser) => setPendingUsers(prev => [...prev, newUser])
+  const handleLogin  = (session) => { setCurrentUser(session); setPage("dashboard") }
+  const handleLogout = ()        => { _authClearSession(); setCurrentUser(null); setPage("dashboard") }
   const handleChangePassword = (email, currentPwd, newPwd) => {
-    setUserStore(prev => prev.map(u =>
-      u.email.toLowerCase() === email.toLowerCase() && u.password === currentPwd
-        ? { ...u, password: newPwd } : u
-    ))
-    setCurrentUser(prev =>
-      prev?.email.toLowerCase() === email.toLowerCase() ? { ...prev, password: newPwd } : prev
-    )
+    _authChangePassword(email, currentPwd, newPwd)         // throws if wrong password
+    setCurrentUser(prev => prev?.email === email.toLowerCase() ? { ...prev } : prev)
   }
 
-  const role = currentUser?.role ?? "HEAD"
+  const role     = currentUser?.role ?? "Agent"
+  const navigateTo = (pg) => { if (canAccessPage(role, pg)) setPage(pg) }
 
-  const navigateTo = (pg) => {
-    if (canAccessPage(role, pg)) setPage(pg)
-  }
-
-  if (!currentUser) return <LoginPage onLogin={handleLogin} onSignUp={handleSignUp} users={userStore} />
+  if (!currentUser) return <LoginPage onLogin={handleLogin} />
 
   return (
     <AppLayout dark={dark} setDark={setDark} page={page} setPage={navigateTo}
@@ -2390,16 +2415,4 @@ export default function App() {
       {page === "profile"     && <ProfilePage      dark={dark} currentUser={currentUser} />}
     </AppLayout>
   )
-}
-
-// ─────────────────────────────────────────────
-// NAMED EXPORTS — for Next.js App Router pages
-// ─────────────────────────────────────────────
-export {
-  useKPIData, useChartData, useTableData,
-  AppLayout, Sidebar, TopNav,
-  LoginPage,
-  DashboardPage, PerformancePage, QAPage,
-  AttendancePage, TasksPage, ReportsPage, LeaderboardPage,
-  SettingsPage, ProfilePage,
 }
