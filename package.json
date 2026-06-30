@@ -17,7 +17,7 @@
     "recharts": "latest"
   },
   "devDependencies": {
-    "tailwindcss": "latest",
+    "tailwindcss": "^3.4.17",
     "postcss": "latest",
     "autoprefixer": "latest"
   }
