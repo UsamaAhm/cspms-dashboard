@@ -193,6 +193,21 @@ const useTableData = () => {
 }
 
 // ─────────────────────────────────────────────
+// LIVE DATA UTILITIES
+// ─────────────────────────────────────────────
+
+/** Convert a Google Apps Script 2D array (first row = headers) into objects */
+const _parseSheet = (arr) => {
+  if (!arr || arr.length < 2) return []
+  const [headers, ...rows] = arr
+  return rows.map(row =>
+    Object.fromEntries(headers.map((h, i) => [h, row[i] ?? ""]))
+  )
+}
+
+const CSPMS_API = "https://script.google.com/macros/s/AKfycbwpJEpst7ytdoGAl2gwLfZezKAusY92pSEAeBI-Lto6ebNhj5gBGpgcFxt7loe61F6Bjg/exec"
+
+// ─────────────────────────────────────────────
 // NAV CONFIG — add new pages here only
 // ─────────────────────────────────────────────
 const NAV_MAIN = [
@@ -1187,18 +1202,60 @@ const DashboardPage = ({ dark, currentUser }) => {
   const tables = useTableData()
   const { agentLock, effectiveFilters, handleFilter, handleReset, filterData } = usePageFilters(currentUser)
 
+  // ── Live data fetch ────────────────────────────────────────────────────
+  const [liveData,    setLiveData]    = useState(null)
+  const [liveLoading, setLiveLoading] = useState(true)
+  const [liveError,   setLiveError]   = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setLiveLoading(true)
+    setLiveError(null)
+    fetch(CSPMS_API)
+      .then(r => { if (!r.ok) throw new Error(`API ${r.status}`); return r.json() })
+      .then(json => {
+        if (cancelled) return
+        setLiveData({
+          tickets: _parseSheet(json.tickets),
+          csat:    _parseSheet(json.csat),
+          agents:  _parseSheet(json.agents),
+        })
+        setLiveLoading(false)
+      })
+      .catch(err => {
+        if (cancelled) return
+        setLiveError(err.message)
+        setLiveLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [])
+
+  // ── Merge live values into mock KPI — mock stays if API fails ─────────
+  const resolvedKpi = (() => {
+    if (!liveData) return kpi
+    const tickets = liveData.tickets
+    const ratings = tickets.map(t => parseFloat(t.customer_rating)).filter(n => !isNaN(n) && n > 0)
+    const csatValue = ratings.length
+      ? +(ratings.reduce((a, b) => a + b, 0) / ratings.length).toFixed(1)
+      : kpi.csat.value
+    return {
+      ...kpi,
+      emails: { ...kpi.emails, value: tickets.length },
+      csat:   { ...kpi.csat,   value: csatValue      },
+    }
+  })()
+
   const activeAgent = effectiveFilters.agent && effectiveFilters.agent !== "all" ? effectiveFilters.agent : null
   const agentKpi    = activeAgent ? AGENT_KPI_MOCK[activeAgent] : null
 
   const cards = [
-    { ...(agentKpi?.overallKPI ?? kpi.overallKPI), icon: Target,       color: "blue"    },
-    { ...(agentKpi?.emails     ?? kpi.emails),     icon: Mail,          color: "cyan"    },
-    { ...(agentKpi?.chats      ?? kpi.chats),      icon: MessageSquare, color: "purple"  },
-    { ...(agentKpi?.csat       ?? kpi.csat),       icon: Star,          color: "amber"   },
-    { ...(agentKpi?.qa         ?? kpi.qa),         icon: Shield,        color: "emerald" },
-    { ...(agentKpi?.attendance ?? kpi.attendance), icon: UserCheck,     color: "rose"    },
+    { ...(agentKpi?.overallKPI ?? resolvedKpi.overallKPI), icon: Target,       color: "blue"    },
+    { ...(agentKpi?.emails     ?? resolvedKpi.emails),     icon: Mail,          color: "cyan"    },
+    { ...(agentKpi?.chats      ?? resolvedKpi.chats),      icon: MessageSquare, color: "purple"  },
+    { ...(agentKpi?.csat       ?? resolvedKpi.csat),       icon: Star,          color: "amber"   },
+    { ...(agentKpi?.qa         ?? resolvedKpi.qa),         icon: Shield,        color: "emerald" },
+    { ...(agentKpi?.attendance ?? resolvedKpi.attendance), icon: UserCheck,     color: "rose"    },
   ]
-
   const filtActivities  = filterData(tables.recentActivities)
   const filtAudits      = filterData(tables.latestAudits)
   const filtLeaderboard = filterData(tables.leaderboard)
