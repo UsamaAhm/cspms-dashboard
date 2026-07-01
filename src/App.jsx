@@ -1,19 +1,6 @@
-// =============================================================================
-// src/App.jsx  —  CSPMS complete application
-//
-// Self-contained: auth utilities, login/signup/forgot-password UI,
-// all dashboard pages, sidebar, topnav, charts, filters.
-//
-// ⚠️  AUTH NOTE — localStorage prototype:
-//     User sessions are stored in browser localStorage.
-//     Replace with Supabase / Firebase / Auth0 / backend JWT
-//     before giving external users access or storing real company data.
-//
-// Dependencies (add to package.json if missing):
-//   npm install react react-dom recharts lucide-react
-// =============================================================================
-
+"use client"
 import { useState, useRef, useEffect } from "react"
+import { supabase } from "./supabase"
 import {
   BarChart, Bar, LineChart, Line, AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
@@ -28,66 +15,10 @@ import {
 } from "lucide-react"
 
 // ─────────────────────────────────────────────
-// MOCK AUTH — users, roles, permissions
+// AUTH — roles and permissions
+// Demo users removed for production prototype.
 // ─────────────────────────────────────────────
-// ─────────────────────────────────────────────────────────────────────────────
-// AUTH UTILITIES  ·  localStorage prototype
-//
-// ⚠️  TEMPORARY — browser-only prototype storage.
-//     Before real company use, replace with one of:
-//       • Supabase  → supabase.com/docs/guides/auth
-//       • Firebase  → firebase.google.com/docs/auth
-//       • Auth0     → auth0.com/docs/quickstart/spa/react
-//       • Custom backend JWT (Express / FastAPI / Django)
-//     Passwords are stored in plain text in localStorage.
-//     This is acceptable for a private internal prototype only.
-// ─────────────────────────────────────────────────────────────────────────────
-const _AUTH_USERS_KEY   = "cspms_auth_users"
-const _AUTH_SESSION_KEY = "cspms_auth_session"
-
-const _authGetUsers    = () => { try { return JSON.parse(localStorage.getItem(_AUTH_USERS_KEY)   || "[]")   } catch { return []   } }
-const _authGetSession  = () => { try { return JSON.parse(localStorage.getItem(_AUTH_SESSION_KEY) || "null") } catch { return null } }
-const _authSaveSession = (u) => localStorage.setItem(_AUTH_SESSION_KEY, JSON.stringify(u))
-const _authClearSession= () => localStorage.removeItem(_AUTH_SESSION_KEY)
-
-const _authInitials = (name) =>
-  (name || "").trim().split(/\s+/).filter(Boolean).map(w => w[0].toUpperCase()).join("").slice(0, 2) || "??"
-
-const _authSignUp = (name, email, password) => {
-  const users = _authGetUsers()
-  if (users.find(u => u.email === email.trim().toLowerCase()))
-    throw new Error("An account with this email already exists.")
-  const user = {
-    id:        Date.now(),
-    name:      name.trim(),
-    initials:  _authInitials(name.trim()),
-    role:      "Agent",          // new accounts default to Agent; change role in DB after real auth
-    email:     email.trim().toLowerCase(),
-    password,                    // ⚠️ plain-text — prototype only
-    createdAt: new Date().toISOString(),
-  }
-  localStorage.setItem(_AUTH_USERS_KEY, JSON.stringify([...users, user]))
-  const { password: _p, ...session } = user
-  _authSaveSession(session)
-  return session
-}
-
-const _authSignIn = (email, password) => {
-  const users = _authGetUsers()
-  const user  = users.find(u => u.email === email.trim().toLowerCase() && u.password === password)
-  if (!user) throw new Error("Incorrect email or password.")
-  const { password: _p, ...session } = user
-  _authSaveSession(session)
-  return session
-}
-
-const _authChangePassword = (email, currentPwd, newPwd) => {
-  const users   = _authGetUsers()
-  const target  = users.find(u => u.email === email.toLowerCase() && u.password === currentPwd)
-  if (!target)  throw new Error("Current password is incorrect.")
-  const updated = users.map(u => u.id === target.id ? { ...u, password: newPwd } : u)
-  localStorage.setItem(_AUTH_USERS_KEY, JSON.stringify(updated))
-}
+const MOCK_USERS = []
 
 const ROLE_PERMISSIONS = {
   "HEAD": {
@@ -191,21 +122,6 @@ const useTableData = () => {
   ]
   return { recentActivities, latestAudits, leaderboard, pendingTasks }
 }
-
-// ─────────────────────────────────────────────
-// LIVE DATA UTILITIES
-// ─────────────────────────────────────────────
-
-/** Convert a Google Apps Script 2D array (first row = headers) into objects */
-const _parseSheet = (arr) => {
-  if (!arr || arr.length < 2) return []
-  const [headers, ...rows] = arr
-  return rows.map(row =>
-    Object.fromEntries(headers.map((h, i) => [h, row[i] ?? ""]))
-  )
-}
-
-const CSPMS_API = "https://script.google.com/macros/s/AKfycbwpJEpst7ytdoGAl2gwLfZezKAusY92pSEAeBI-Lto6ebNhj5gBGpgcFxt7loe61F6Bjg/exec"
 
 // ─────────────────────────────────────────────
 // NAV CONFIG — add new pages here only
@@ -1202,60 +1118,18 @@ const DashboardPage = ({ dark, currentUser }) => {
   const tables = useTableData()
   const { agentLock, effectiveFilters, handleFilter, handleReset, filterData } = usePageFilters(currentUser)
 
-  // ── Live data fetch ────────────────────────────────────────────────────
-  const [liveData,    setLiveData]    = useState(null)
-  const [liveLoading, setLiveLoading] = useState(true)
-  const [liveError,   setLiveError]   = useState(null)
-
-  useEffect(() => {
-    let cancelled = false
-    setLiveLoading(true)
-    setLiveError(null)
-    fetch(CSPMS_API)
-      .then(r => { if (!r.ok) throw new Error(`API ${r.status}`); return r.json() })
-      .then(json => {
-        if (cancelled) return
-        setLiveData({
-          tickets: _parseSheet(json.tickets),
-          csat:    _parseSheet(json.csat),
-          agents:  _parseSheet(json.agents),
-        })
-        setLiveLoading(false)
-      })
-      .catch(err => {
-        if (cancelled) return
-        setLiveError(err.message)
-        setLiveLoading(false)
-      })
-    return () => { cancelled = true }
-  }, [])
-
-  // ── Merge live values into mock KPI — mock stays if API fails ─────────
-  const resolvedKpi = (() => {
-    if (!liveData) return kpi
-    const tickets = liveData.tickets
-    const ratings = tickets.map(t => parseFloat(t.customer_rating)).filter(n => !isNaN(n) && n > 0)
-    const csatValue = ratings.length
-      ? +(ratings.reduce((a, b) => a + b, 0) / ratings.length).toFixed(1)
-      : kpi.csat.value
-    return {
-      ...kpi,
-      emails: { ...kpi.emails, value: tickets.length },
-      csat:   { ...kpi.csat,   value: csatValue      },
-    }
-  })()
-
   const activeAgent = effectiveFilters.agent && effectiveFilters.agent !== "all" ? effectiveFilters.agent : null
   const agentKpi    = activeAgent ? AGENT_KPI_MOCK[activeAgent] : null
 
   const cards = [
-    { ...(agentKpi?.overallKPI ?? resolvedKpi.overallKPI), icon: Target,       color: "blue"    },
-    { ...(agentKpi?.emails     ?? resolvedKpi.emails),     icon: Mail,          color: "cyan"    },
-    { ...(agentKpi?.chats      ?? resolvedKpi.chats),      icon: MessageSquare, color: "purple"  },
-    { ...(agentKpi?.csat       ?? resolvedKpi.csat),       icon: Star,          color: "amber"   },
-    { ...(agentKpi?.qa         ?? resolvedKpi.qa),         icon: Shield,        color: "emerald" },
-    { ...(agentKpi?.attendance ?? resolvedKpi.attendance), icon: UserCheck,     color: "rose"    },
+    { ...(agentKpi?.overallKPI ?? kpi.overallKPI), icon: Target,       color: "blue"    },
+    { ...(agentKpi?.emails     ?? kpi.emails),     icon: Mail,          color: "cyan"    },
+    { ...(agentKpi?.chats      ?? kpi.chats),      icon: MessageSquare, color: "purple"  },
+    { ...(agentKpi?.csat       ?? kpi.csat),       icon: Star,          color: "amber"   },
+    { ...(agentKpi?.qa         ?? kpi.qa),         icon: Shield,        color: "emerald" },
+    { ...(agentKpi?.attendance ?? kpi.attendance), icon: UserCheck,     color: "rose"    },
   ]
+
   const filtActivities  = filterData(tables.recentActivities)
   const filtAudits      = filterData(tables.latestAudits)
   const filtLeaderboard = filterData(tables.leaderboard)
@@ -1272,18 +1146,6 @@ const DashboardPage = ({ dark, currentUser }) => {
       <PageFilterBar config={FILTER_CONFIGS.dashboard} dark={dark} agentLock={agentLock}
         onFilter={handleFilter} onReset={handleReset}
         onExport={() => downloadCSV([...filtActivities, ...filtAudits], "dashboard.csv")} />
-
-     {/* Live data status */}
-      {liveLoading && (
-        <p className="text-xs mb-3" style={{ color: dark ? "#94a3b8" : "#64748b" }}>
-          Loading live data…
-        </p>
-      )}
-      {liveError && !liveLoading && (
-        <p className="text-xs mb-3" style={{ color: "#F59E0B" }}>
-          Live data unavailable — showing mock data. ({liveError})
-        </p>
-      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-5">
@@ -1846,17 +1708,20 @@ const SettingsPage = ({ dark, currentUser, onChangePassword }) => {
   const [pwConfirm, setPwConfirm] = useState("")
   const [pwError,   setPwError]   = useState("")
   const [pwSuccess, setPwSuccess] = useState(false)
-  const handleChangePw = () => {
+  const handleChangePw = async () => {
     setPwSuccess(false)
-    if (!pwCurrent)                   { setPwError("Current password is required."); return }
-    if (pwNew.length < 8)             { setPwError("New password must be at least 8 characters."); return }
-    if (pwNew !== pwConfirm)          { setPwError("Passwords do not match."); return }
-    if (!currentUser?.email)          { setPwError("No user session found."); return }
-    if (pwCurrent !== currentUser.password) { setPwError("Current password is incorrect."); return }
+    if (!pwCurrent)          { setPwError("Current password is required."); return }
+    if (pwNew.length < 8)    { setPwError("New password must be at least 8 characters."); return }
+    if (pwNew !== pwConfirm) { setPwError("Passwords do not match."); return }
+    if (!currentUser?.email) { setPwError("No user session found."); return }
     setPwError("")
-    onChangePassword?.(currentUser.email, pwCurrent, pwNew)
-    setPwCurrent(""); setPwNew(""); setPwConfirm("")
-    setPwSuccess(true)
+    try {
+      await onChangePassword?.(currentUser.email, pwCurrent, pwNew)
+      setPwCurrent(""); setPwNew(""); setPwConfirm("")
+      setPwSuccess(true)
+    } catch (err) {
+      setPwError(err.message || "Failed to change password.")
+    }
   }
 
   const SETTINGS_TABS = [
@@ -2195,315 +2060,338 @@ const ProfilePage = ({ dark, currentUser }) => {
   )
 }
 
+
 // ─────────────────────────────────────────────
-// LOGIN PAGE  —  professional, localStorage-backed
+// AUTH UTILITIES — Supabase
+// ─────────────────────────────────────────────
+
+const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((email || "").trim())
+
+const makeInitials = (name) =>
+  (name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(part => part[0]?.toUpperCase())
+    .join("")
+    .slice(0, 2) || "AG"
+
+/** Fetch the profiles row and return the currentUser shape expected by the app */
+const fetchProfile = async (authUser) => {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("name, email, role, status")
+    .eq("id", authUser.id)
+    .single()
+  if (error || !data) return null
+  return {
+    id:       authUser.id,
+    email:    data.email,
+    name:     data.name     || authUser.email,
+    initials: makeInitials(data.name || authUser.email),
+    role:     data.role     || "Agent",
+    status:   data.status   || "active",
+  }
+}
+
+// ─────────────────────────────────────────────
+// LOGIN PAGE
 // ─────────────────────────────────────────────
 const LoginPage = ({ onLogin }) => {
-  const [mode,     setMode]     = useState("login")   // "login" | "signup" | "forgot"
-  const [name,     setName]     = useState("")
-  const [email,    setEmail]    = useState("")
+  const [mode, setMode] = useState("login")
+  const [name, setName] = useState("")
+  const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
-  const [confirm,  setConfirm]  = useState("")
-  const [error,    setError]    = useState("")
-  const [info,     setInfo]     = useState("")
-  const [loading,  setLoading]  = useState(false)
-  const [showPwd,  setShowPwd]  = useState(false)
+  const [confirmPassword, setConfirmPassword] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
+  const [error, setError] = useState("")
+  const [info, setInfo] = useState("")
+  const [loading, setLoading] = useState(false)
 
-  const switchMode = (m) => { setMode(m); setError(""); setInfo(""); setName(""); setEmail(""); setPassword(""); setConfirm("") }
-  const isValidEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim())
+  const clearMessages = () => { setError(""); setInfo("") }
 
-  const handleLogin = async (ev) => {
-    ev.preventDefault(); setError("")
+  const switchMode = (nextMode) => {
+    setMode(nextMode)
+    setName("")
+    setEmail("")
+    setPassword("")
+    setConfirmPassword("")
+    clearMessages()
+  }
+
+  const handleLogin = async (event) => {
+    event.preventDefault()
+    clearMessages()
+
     if (!isValidEmail(email)) return setError("Please enter a valid email address.")
-    if (!password)            return setError("Please enter your password.")
+    if (!password) return setError("Please enter your password.")
+
     setLoading(true)
-    await new Promise(r => setTimeout(r, 400))
-    try   { onLogin(_authSignIn(email, password)) }
-    catch (err) { setError(err.message) }
+    const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
+    if (error) { setError(error.message || "Unable to sign in."); setLoading(false); return }
+    const profile = await fetchProfile(data.user)
+    if (!profile) { setError("Profile not found. Contact your administrator."); setLoading(false); return }
+    onLogin(profile)
     setLoading(false)
   }
 
-  const handleSignUp = async (ev) => {
-    ev.preventDefault(); setError("")
-    if (!name.trim())         return setError("Please enter your full name.")
+  const handleSignup = async (event) => {
+    event.preventDefault()
+    clearMessages()
+
+    if (!name.trim()) return setError("Please enter your full name.")
     if (!isValidEmail(email)) return setError("Please enter a valid email address.")
-    if (password.length < 8)  return setError("Password must be at least 8 characters.")
-    if (password !== confirm)  return setError("Passwords do not match.")
+    if (password.length < 8) return setError("Password must be at least 8 characters.")
+    if (password !== confirmPassword) return setError("Passwords do not match.")
+
     setLoading(true)
-    await new Promise(r => setTimeout(r, 400))
-    try   { onLogin(_authSignUp(name, email, password)) }
-    catch (err) { setError(err.message) }
+    const { data, error } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+      options: { data: { name: name.trim() } },
+    })
+    if (error) { setError(error.message || "Unable to create account."); setLoading(false); return }
+    if (data.session) {
+      const profile = await fetchProfile(data.user)
+      if (profile) { onLogin(profile); setLoading(false); return }
+    }
+    setInfo("Account created! Check your email to confirm your address, then sign in.")
     setLoading(false)
   }
 
-  const handleForgot = (ev) => {
-    ev.preventDefault(); setError(""); setInfo("")
+  const handleForgotPassword = async (event) => {
+    event.preventDefault()
+    clearMessages()
+
     if (!isValidEmail(email)) return setError("Please enter a valid email address.")
-    // ── TODO: wire up a real email service before enabling password reset ──────
-    // Steps when ready:
-    //   1. POST /api/auth/forgot-password  { email }
-    //   2. Server generates a signed token, stores with expiry, sends email via
-    //      SendGrid / Resend / SES / Supabase Auth resetPasswordForEmail()
-    //   3. User clicks link → /reset-password?token=...
-    //   4. Server verifies token, allows new password entry
-    // ──────────────────────────────────────────────────────────────────────────
-    // Until then: do NOT pretend the email was sent (that would mislead users).
-    setInfo("Password reset is not yet active — email service is not configured. Please contact your system administrator to reset your password.")
+
+    setLoading(true)
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: `${window.location.origin}/`,
+    })
+    if (error) { setError(error.message); setLoading(false); return }
+    setInfo("Password reset email sent! Check your inbox and follow the link.")
+    setLoading(false)
   }
 
-  // ── shared styles ────────────────────────────────────────────────────────────
-  const wrap = {
-    minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
-    background: "linear-gradient(135deg,#0f172a 0%,#1e3a5f 50%,#0f172a 100%)", padding: 24,
-    position: "relative", overflow: "hidden",
+  const cardStyle = {
+    background: "rgba(255,255,255,0.06)",
+    backdropFilter: "blur(20px)",
+    WebkitBackdropFilter: "blur(20px)",
+    border: "1px solid rgba(255,255,255,0.1)",
+    boxShadow: "0 25px 60px rgba(0,0,0,0.35)",
   }
-  const STARS = [
-    { w:2, top:"8%",  left:"1%",  dur:"20s", delay:"0s"   },
-    { w:3, top:"22%", left:"5%",  dur:"26s", delay:"2s"   },
-    { w:2, top:"45%", left:"2%",  dur:"22s", delay:"5s"   },
-    { w:4, top:"68%", left:"4%",  dur:"30s", delay:"1s"   },
-    { w:2, top:"85%", left:"7%",  dur:"24s", delay:"7s"   },
-    { w:3, top:"15%", left:"11%", dur:"28s", delay:"3s"   },
-    { w:2, top:"55%", left:"9%",  dur:"19s", delay:"9s"   },
-    { w:5, top:"33%", left:"3%",  dur:"34s", delay:"4s"   },
-    { w:2, top:"75%", left:"6%",  dur:"23s", delay:"6s"   },
-    { w:3, top:"5%",  left:"14%", dur:"27s", delay:"11s"  },
-    { w:2, top:"92%", left:"12%", dur:"21s", delay:"8s"   },
-    { w:4, top:"40%", left:"8%",  dur:"32s", delay:"13s"  },
-    { w:2, top:"60%", left:"15%", dur:"18s", delay:"2.5s" },
-    { w:3, top:"28%", left:"10%", dur:"29s", delay:"15s"  },
-    { w:2, top:"80%", left:"0%",  dur:"25s", delay:"10s"  },
-    { w:3, top:"18%", left:"16%", dur:"22s", delay:"12s"  },
-    { w:2, top:"50%", left:"13%", dur:"20s", delay:"16s"  },
-    { w:4, top:"70%", left:"2%",  dur:"31s", delay:"14s"  },
-    { w:2, top:"10%", left:"17%", dur:"19s", delay:"17s"  },
-    { w:3, top:"95%", left:"8%",  dur:"27s", delay:"19s"  },
-  ]
-  const card = {
-    width: "100%", maxWidth: 420, background: "rgba(255,255,255,0.97)",
-    borderRadius: 20, padding: "40px 36px", boxShadow: "0 25px 50px rgba(0,0,0,0.45)",
-    boxSizing: "border-box",
+  const inputStyle = {
+    background: "rgba(255,255,255,0.08)",
+    border: "1px solid rgba(255,255,255,0.14)",
+    color: "#e2e8f0",
+    outline: "none",
   }
-  const inp = (extra = {}) => ({
-    width: "100%", padding: "11px 14px", borderRadius: 10, fontSize: 14,
-    border: "1px solid #e2e8f0", outline: "none", background: "#f8fafc",
-    color: "#0f172a", boxSizing: "border-box", ...extra,
-  })
-  const label = { display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6 }
-  const fld   = { marginBottom: 16 }
-  const btnPrimary = {
-    width: "100%", padding: "13px 0", borderRadius: 12, border: "none",
-    background: "linear-gradient(135deg,#3B82F6,#1D4ED8)", color: "#fff",
-    fontSize: 15, fontWeight: 700, cursor: loading ? "wait" : "pointer",
-    boxShadow: "0 4px 14px rgba(59,130,246,0.4)", opacity: loading ? 0.75 : 1,
-    marginTop: 4,
-  }
-  const linkBtn = {
-    background: "none", border: "none", cursor: "pointer",
-    color: "#3B82F6", fontWeight: 600, fontSize: 13, padding: 0,
+  const labelStyle = { color: "#94a3b8" }
+  const primaryStyle = {
+    background: "linear-gradient(135deg,#3B82F6,#2563EB)",
+    boxShadow: "0 4px 20px rgba(59,130,246,0.4)",
   }
 
   return (
-    <div style={wrap}>
-      {STARS.map((s, i) => (
-        <span key={i} style={{
-          position: "absolute",
-          width: s.w, height: s.w,
-          top: s.top, left: s.left,
-          borderRadius: "50%",
-          background: "radial-gradient(circle, rgba(255,255,255,0.95) 0%, rgba(147,197,253,0.5) 55%, transparent 100%)",
-          boxShadow: `0 0 ${s.w * 3}px ${s.w}px rgba(147,197,253,0.25)`,
-          animation: `cspms-float ${s.dur} linear ${s.delay} infinite`,
-          pointerEvents: "none",
-          zIndex: 0,
-        }} />
-      ))}
-      <div style={{ ...card, position: "relative", zIndex: 1 }}>
-
-        {/* Brand header */}
-        <div style={{ textAlign: "center", marginBottom: 30 }}>
-          <div style={{
-            width: 52, height: 52, borderRadius: 14, margin: "0 auto 14px",
-            background: "linear-gradient(135deg,#3B82F6,#1D4ED8)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            boxShadow: "0 8px 20px rgba(59,130,246,0.4)",
-          }}>
-            <span style={{ color: "#fff", fontWeight: 800, fontSize: 20, letterSpacing: -1 }}>CS</span>
+    <div className="min-h-screen flex items-center justify-center px-4"
+      style={{ background: "linear-gradient(135deg,#0f172a 0%,#1e3a5f 50%,#0f172a 100%)" }}>
+      <div className="w-full max-w-md">
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
+            style={{ background: "linear-gradient(135deg,#3B82F6,#2563EB)", boxShadow: "0 8px 32px rgba(59,130,246,0.5)" }}>
+            <BarChart2 size={28} color="#fff" />
           </div>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "#0f172a", letterSpacing: -0.5 }}>CSPMS</h1>
-          <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: 13 }}>
-            Customer Support Performance Management
+          <h1 className="text-2xl font-bold text-white mb-1">CSPMS</h1>
+          <p className="text-sm" style={{ color: "#94a3b8" }}>Customer Support Performance Management</p>
+        </div>
+
+        <div className="rounded-2xl p-8" style={cardStyle}>
+          <h2 className="text-xl font-bold text-white mb-1">
+            {mode === "login" ? "Sign In" : mode === "signup" ? "Create Account" : "Forgot Password"}
+          </h2>
+          <p className="text-sm mb-6" style={labelStyle}>
+            {mode === "login" && "Enter your credentials to continue"}
+            {mode === "signup" && "Create your CSPMS account"}
+            {mode === "forgot" && "Enter your email to request password reset"}
           </p>
-        </div>
 
-        {/* Section heading */}
-        <h2 style={{ margin: "0 0 22px", fontSize: 17, fontWeight: 700, color: "#1e293b" }}>
-          {mode === "login"  ? "Sign in to your account" :
-           mode === "signup" ? "Create an account"        :
-                               "Reset your password"}
-        </h2>
-
-        {/* Error banner */}
-        {error && (
-          <div style={{
-            background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 10,
-            padding: "10px 14px", marginBottom: 18, color: "#DC2626", fontSize: 13,
-          }}>
-            {error}
-          </div>
-        )}
-
-        {/* Info banner */}
-        {info && (
-          <div style={{
-            background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 10,
-            padding: "10px 14px", marginBottom: 18, color: "#1D4ED8", fontSize: 13, lineHeight: 1.5,
-          }}>
-            {info}
-          </div>
-        )}
-
-        {/* ── LOGIN ── */}
-        {mode === "login" && (
-          <form onSubmit={handleLogin} noValidate>
-            <div style={fld}>
-              <label style={label}>Email</label>
-              <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-                placeholder="you@company.com" autoComplete="email" style={inp()} />
+          {error && (
+            <div className="mb-4 rounded-xl px-4 py-2.5 text-xs"
+              style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.3)", color: "#fca5a5" }}>
+              {error}
             </div>
-            <div style={fld}>
-              <label style={label}>Password</label>
-              <div style={{ position: "relative" }}>
-                <input type={showPwd ? "text" : "password"} value={password}
-                  onChange={e => setPassword(e.target.value)} placeholder="Enter your password"
-                  autoComplete="current-password" style={inp({ paddingRight: 52 })} />
-                <button type="button" onClick={() => setShowPwd(p => !p)}
-                  style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
-                    background: "none", border: "none", cursor: "pointer", color: "#94a3b8", fontSize: 12, fontWeight: 600 }}>
-                  {showPwd ? "Hide" : "Show"}
+          )}
+
+          {info && (
+            <div className="mb-4 rounded-xl px-4 py-2.5 text-xs leading-relaxed"
+              style={{ background: "rgba(59,130,246,0.12)", border: "1px solid rgba(59,130,246,0.25)", color: "#93c5fd" }}>
+              {info}
+            </div>
+          )}
+
+          {mode === "login" && (
+            <form onSubmit={handleLogin}>
+              <div className="mb-4">
+                <label className="block text-xs font-semibold mb-1.5" style={labelStyle}>Email</label>
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                  placeholder="you@company.com" className="w-full rounded-xl py-3 px-4 text-sm" style={inputStyle} />
+              </div>
+              <div className="mb-2">
+                <label className="block text-xs font-semibold mb-1.5" style={labelStyle}>Password</label>
+                <div className="relative">
+                  <input type={showPassword ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)}
+                    placeholder="Your password" className="w-full rounded-xl py-3 px-4 pr-14 text-sm" style={inputStyle} />
+                  <button type="button" onClick={() => setShowPassword(prev => !prev)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-semibold" style={{ color: "#94a3b8" }}>
+                    {showPassword ? "Hide" : "Show"}
+                  </button>
+                </div>
+              </div>
+              <div className="flex justify-end mb-5">
+                <button type="button" onClick={() => switchMode("forgot")}
+                  className="text-xs font-semibold" style={{ color: "#60a5fa" }}>
+                  Forgot Password?
                 </button>
               </div>
-            </div>
-            <div style={{ textAlign: "right", marginBottom: 20, marginTop: -8 }}>
-              <button type="button" onClick={() => switchMode("forgot")} style={linkBtn}>
-                Forgot password?
+              <button type="submit" disabled={loading}
+                className="w-full py-3 rounded-xl text-sm font-bold text-white mb-4 disabled:opacity-70" style={primaryStyle}>
+                {loading ? "Signing in..." : "Sign In"}
               </button>
-            </div>
-            <button type="submit" style={btnPrimary} disabled={loading}>
-              {loading ? "Signing in…" : "Sign In"}
-            </button>
-            <p style={{ textAlign: "center", marginTop: 20, fontSize: 13, color: "#64748b" }}>
-              Don&apos;t have an account?{" "}
-              <button type="button" onClick={() => switchMode("signup")} style={linkBtn}>Create one</button>
-            </p>
-          </form>
-        )}
-
-        {/* ── SIGN UP ── */}
-        {mode === "signup" && (
-          <form onSubmit={handleSignUp} noValidate>
-            <div style={fld}>
-              <label style={label}>Full Name</label>
-              <input type="text" value={name} onChange={e => setName(e.target.value)}
-                placeholder="Your full name" autoComplete="name" style={inp()} />
-            </div>
-            <div style={fld}>
-              <label style={label}>Email</label>
-              <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-                placeholder="you@company.com" autoComplete="email" style={inp()} />
-            </div>
-            <div style={fld}>
-              <label style={label}>
-                Password
-                <span style={{ fontWeight: 400, color: "#94a3b8", marginLeft: 6, fontSize: 12 }}>
-                  (min. 8 characters)
-                </span>
-              </label>
-              <div style={{ position: "relative" }}>
-                <input type={showPwd ? "text" : "password"} value={password}
-                  onChange={e => setPassword(e.target.value)} placeholder="Create a password"
-                  autoComplete="new-password" style={inp({ paddingRight: 52 })} />
-                <button type="button" onClick={() => setShowPwd(p => !p)}
-                  style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
-                    background: "none", border: "none", cursor: "pointer", color: "#94a3b8", fontSize: 12, fontWeight: 600 }}>
-                  {showPwd ? "Hide" : "Show"}
+              <div className="text-center pt-1">
+                <span className="text-sm" style={{ color: "#64748b" }}>Don&apos;t have an account? </span>
+                <button type="button" onClick={() => switchMode("signup")}
+                  className="text-sm font-semibold" style={{ color: "#60a5fa" }}>
+                  Create Account
                 </button>
               </div>
-            </div>
-            <div style={fld}>
-              <label style={label}>Confirm Password</label>
-              <input type={showPwd ? "text" : "password"} value={confirm}
-                onChange={e => setConfirm(e.target.value)} placeholder="Repeat your password"
-                autoComplete="new-password" style={inp()} />
-            </div>
-            <div style={{ marginBottom: 20, padding: "10px 14px", borderRadius: 10,
-              background: "#F0FDF4", border: "1px solid #BBF7D0", fontSize: 12, color: "#166534" }}>
-              New accounts are assigned the <strong>Agent</strong> role. Contact your administrator to change roles.
-            </div>
-            <button type="submit" style={btnPrimary} disabled={loading}>
-              {loading ? "Creating account…" : "Create Account"}
-            </button>
-            <p style={{ textAlign: "center", marginTop: 20, fontSize: 13, color: "#64748b" }}>
-              Already have an account?{" "}
-              <button type="button" onClick={() => switchMode("login")} style={linkBtn}>Sign in</button>
-            </p>
-          </form>
-        )}
+            </form>
+          )}
 
-        {/* ── FORGOT PASSWORD ── */}
-        {mode === "forgot" && (
-          <form onSubmit={handleForgot} noValidate>
-            <p style={{ fontSize: 13, color: "#64748b", marginBottom: 20, lineHeight: 1.6 }}>
-              Enter your account email address below. Password reset requires an email service
-              to be configured by your administrator.
-            </p>
-            <div style={fld}>
-              <label style={label}>Email</label>
-              <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-                placeholder="you@company.com" autoComplete="email" style={inp()} />
-            </div>
-            <button type="submit" style={{ ...btnPrimary, opacity: 1 }}>
-              Request Password Reset
-            </button>
-            <p style={{ textAlign: "center", marginTop: 20, fontSize: 13, color: "#64748b" }}>
-              Remembered it?{" "}
-              <button type="button" onClick={() => switchMode("login")} style={linkBtn}>Back to sign in</button>
-            </p>
-          </form>
-        )}
+          {mode === "signup" && (
+            <form onSubmit={handleSignup}>
+              <div className="mb-4">
+                <label className="block text-xs font-semibold mb-1.5" style={labelStyle}>Full Name</label>
+                <input type="text" value={name} onChange={e => setName(e.target.value)}
+                  placeholder="Your full name" className="w-full rounded-xl py-3 px-4 text-sm" style={inputStyle} />
+              </div>
+              <div className="mb-4">
+                <label className="block text-xs font-semibold mb-1.5" style={labelStyle}>Email</label>
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                  placeholder="you@company.com" className="w-full rounded-xl py-3 px-4 text-sm" style={inputStyle} />
+              </div>
+              <div className="mb-4">
+                <label className="block text-xs font-semibold mb-1.5" style={labelStyle}>Password</label>
+                <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+                  placeholder="Minimum 8 characters" className="w-full rounded-xl py-3 px-4 text-sm" style={inputStyle} />
+              </div>
+              <div className="mb-5">
+                <label className="block text-xs font-semibold mb-1.5" style={labelStyle}>Confirm Password</label>
+                <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
+                  placeholder="Re-enter password" className="w-full rounded-xl py-3 px-4 text-sm" style={inputStyle} />
+              </div>
+              <div className="mb-5 rounded-xl px-4 py-3 text-xs leading-relaxed"
+                style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)", color: "#86efac" }}>
+                Account will be created immediately with Agent access. Higher roles can be added later through real authentication.
+              </div>
+              <button type="submit" disabled={loading}
+                className="w-full py-3 rounded-xl text-sm font-bold text-white mb-3 disabled:opacity-70" style={primaryStyle}>
+                {loading ? "Creating account..." : "Create Account"}
+              </button>
+              <button type="button" onClick={() => switchMode("login")}
+                className="w-full py-2 text-sm" style={{ color: "#94a3b8" }}>
+                Back to Sign In
+              </button>
+            </form>
+          )}
 
-        {/* Footer */}
-        <div style={{
-          marginTop: 28, paddingTop: 18, borderTop: "1px solid #f1f5f9",
-          textAlign: "center", fontSize: 11, color: "#94a3b8",
-        }}>
-          Secure access — CSPMS v1.0
+          {mode === "forgot" && (
+            <form onSubmit={handleForgotPassword}>
+              <div className="mb-5">
+                <label className="block text-xs font-semibold mb-1.5" style={labelStyle}>Email Address</label>
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                  placeholder="you@company.com" className="w-full rounded-xl py-3 px-4 text-sm" style={inputStyle} />
+              </div>
+              <button type="submit" className="w-full py-3 rounded-xl text-sm font-bold text-white mb-3" style={primaryStyle}>
+                Request Password Reset
+              </button>
+              <button type="button" onClick={() => switchMode("login")}
+                className="w-full py-2 text-sm" style={{ color: "#94a3b8" }}>
+                Back to Sign In
+              </button>
+            </form>
+          )}
         </div>
 
+        <p className="text-center text-xs mt-5" style={{ color: "#64748b" }}>
+          Secured by Supabase Auth. All sessions are managed server-side.
+        </p>
       </div>
     </div>
   )
 }
 
 // ─────────────────────────────────────────────
-// ROOT APP — standalone preview (state routing)
+// ROOT APP
 // ─────────────────────────────────────────────
 export default function App() {
-  const [page,        setPage]        = useState("dashboard")
-  const [dark,        setDark]        = useState(false)
-  // ── Session loaded from localStorage on mount — persists across page reloads ─
-  const [currentUser, setCurrentUser] = useState(() => _authGetSession())
+  const [page, setPage] = useState("dashboard")
+  const [dark, setDark] = useState(false)
+  const [currentUser, setCurrentUser] = useState(null)
+  const [authLoading, setAuthLoading] = useState(true)
 
-  const handleLogin  = (session) => { setCurrentUser(session); setPage("dashboard") }
-  const handleLogout = ()        => { _authClearSession(); setCurrentUser(null); setPage("dashboard") }
-  const handleChangePassword = (email, currentPwd, newPwd) => {
-    _authChangePassword(email, currentPwd, newPwd)         // throws if wrong password
-    setCurrentUser(prev => prev?.email === email.toLowerCase() ? { ...prev } : prev)
+  useEffect(() => {
+    // Restore session on page load / refresh
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session) {
+        const profile = await fetchProfile(session.user)
+        setCurrentUser(profile)
+      }
+      setAuthLoading(false)
+    })
+    // Keep session in sync: token refresh + logout from another tab
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session) {
+        const profile = await fetchProfile(session.user)
+        setCurrentUser(profile)
+      } else {
+        setCurrentUser(null)
+      }
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
+  const handleLogin = (profile) => {
+    setCurrentUser(profile)
+    setPage("dashboard")
   }
 
-  const role     = currentUser?.role ?? "Agent"
-  const navigateTo = (pg) => { if (canAccessPage(role, pg)) setPage(pg) }
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    setCurrentUser(null)
+    setPage("dashboard")
+  }
 
+  const handleChangePassword = async (email, currentPassword, newPassword) => {
+    // Re-authenticate first to verify the current password
+    const { error: authErr } = await supabase.auth.signInWithPassword({ email, password: currentPassword })
+    if (authErr) throw new Error("Current password is incorrect.")
+    const { error: updateErr } = await supabase.auth.updateUser({ password: newPassword })
+    if (updateErr) throw new Error(updateErr.message)
+  }
+
+  const role = currentUser?.role ?? "Agent"
+
+  const navigateTo = (pg) => {
+    if (canAccessPage(role, pg)) setPage(pg)
+  }
+
+  if (authLoading) return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
+      background: "linear-gradient(135deg,#0f172a 0%,#1e3a5f 50%,#0f172a 100%)" }}>
+      <p style={{ color: "#94a3b8", fontFamily: "'Inter',sans-serif", fontSize: 14 }}>Loading…</p>
+    </div>
+  )
   if (!currentUser) return <LoginPage onLogin={handleLogin} />
 
   return (
