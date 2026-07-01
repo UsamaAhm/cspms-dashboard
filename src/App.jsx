@@ -1273,6 +1273,18 @@ const DashboardPage = ({ dark, currentUser }) => {
         onFilter={handleFilter} onReset={handleReset}
         onExport={() => downloadCSV([...filtActivities, ...filtAudits], "dashboard.csv")} />
 
+     {/* Live data status */}
+      {liveLoading && (
+        <p className="text-xs mb-3" style={{ color: dark ? "#94a3b8" : "#64748b" }}>
+          Loading live data…
+        </p>
+      )}
+      {liveError && !liveLoading && (
+        <p className="text-xs mb-3" style={{ color: "#F59E0B" }}>
+          Live data unavailable — showing mock data. ({liveError})
+        </p>
+      )}
+
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-5">
         {cards.map((c, i) => <KPICard key={i} {...c} dark={dark} />)}
