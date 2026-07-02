@@ -207,18 +207,33 @@ const downloadCSV = (rows, filename = "export.csv") => {
  * Generic filter — works on any array of records.
  * Checks: from/to (date or due), agent slug, channel/type, status, priority, free-text search.
  */
+/** Safely coerce any date value to YYYY-MM-DD string. Returns "" for blank/invalid. */
+const safeDate = (val) => {
+  if (!val || typeof val !== "string" || !val.trim()) return ""
+  const t = val.trim()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t
+  const d = new Date(t)
+  return isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10)
+}
+
 const applyFilters = (items, filters) => {
   if (!items || !items.length) return items
   const { from, to, agent, channel, status, priority, search } = filters || {}
   const norm = (s) => (s ?? "").toLowerCase().replace(/[-\s]+/g, "-")
+  const fromDate = safeDate(from)
+  const toDate   = safeDate(to)
 
   return items.filter(item => {
-    const itemDate = item.date || item.due || ""
-    if (from && itemDate && itemDate < from) return false
-    if (to   && itemDate && itemDate > to)   return false
+    const itemDate = safeDate(item.date || item.due || "")
+    // items with no date are not excluded by a date filter
+    if (fromDate && itemDate && itemDate < fromDate) return false
+    if (toDate   && itemDate && itemDate > toDate)   return false
 
     if (agent && agent !== "all") {
-      const nameField = item.agent || item.agentName || item.assignee || ""
+      const nameField = (
+        item.agent || item.agentName || item.assignee ||
+        item.agent_name || item["Assignee"] || item["Rated users"] || ""
+      ).toString().trim()
       if (agentSlug(nameField) !== agent) return false
     }
 
