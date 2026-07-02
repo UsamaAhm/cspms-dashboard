@@ -207,7 +207,7 @@ const downloadCSV = (rows, filename = "export.csv") => {
  * Generic filter — works on any array of records.
  * Checks: from/to (date or due), agent slug, channel/type, status, priority, free-text search.
  */
-/** Safely coerce any date value to YYYY-MM-DD string. Returns "" for blank/invalid. */
+/** Safely coerce any date value to YYYY-MM-DD. Returns "" for blank/invalid. */
 const safeDate = (val) => {
   if (!val || typeof val !== "string" || !val.trim()) return ""
   const t = val.trim()
@@ -225,7 +225,6 @@ const applyFilters = (items, filters) => {
 
   return items.filter(item => {
     const itemDate = safeDate(item.date || item.due || "")
-    // items with no date are not excluded by a date filter
     if (fromDate && itemDate && itemDate < fromDate) return false
     if (toDate   && itemDate && itemDate > toDate)   return false
 
