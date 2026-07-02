@@ -999,6 +999,13 @@ const TopNav = ({ dark, setDark, page, setPage, currentUser, onLogout }) => {
     return () => document.removeEventListener("mousedown", handler)
   }, [notifOpen])
 
+  useEffect(() => {
+    if (!profilOpen) return
+    const handler = (e) => { if (profilRef.current && !profilRef.current.contains(e.target)) setProfilOpen(false) }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [profilOpen])
+
   const handleLogout = () => { close(); onLogout?.() }
 
   return (
