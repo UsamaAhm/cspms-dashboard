@@ -269,7 +269,8 @@ const safeDate = (val) => {
 }
 
 const applyFilters = (items, filters) => {
-  if (!items || !items.length) return items
+  if (!Array.isArray(items)) return []
+  if (!items.length) return []
   const { from, to, agent, channel, status, priority, search } = filters || {}
   const norm = (s) => (s ?? "").toLowerCase().replace(/[-\s]+/g, "-")
   const fromDate = safeDate(from)
@@ -440,7 +441,7 @@ const Badge = ({ label, variant = "default" }) => {
     pass:    { bg: "#d1fae5", text: "#065f46" },
     fail:    { bg: "#fee2e2", text: "#991b1b" },
   }
-  const c = map[variant.toLowerCase()] || map.default
+  const c = map[(variant ?? "default").toLowerCase()] || map.default
   return (
     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold"
       style={{ background: c.bg, color: c.text }}>
@@ -450,9 +451,10 @@ const Badge = ({ label, variant = "default" }) => {
 }
 
 const Avatar = ({ name, size = "md" }) => {
-  const initials = name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2)
+  const safeName = name || "??"
+  const initials = safeName.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2)
   const colors   = ["#3B82F6","#10B981","#8B5CF6","#F59E0B","#F43F5E","#06B6D4","#EC4899"]
-  const bg       = colors[name.charCodeAt(0) % colors.length]
+  const bg       = colors[safeName.charCodeAt(0) % colors.length]
   const s        = { sm: "w-7 h-7 text-xs", md: "w-9 h-9 text-sm", lg: "w-14 h-14 text-lg" }[size]
   return (
     <div className={`${s} rounded-xl flex items-center justify-center text-white font-bold flex-shrink-0`}
@@ -1223,6 +1225,7 @@ const DashboardPage = ({ dark, currentUser }) => {
   //   • No filter + no live data → show mock as a display default
   const chatZero = { ...kpi.chats, value: 0, change: 0 }
   const activeKpi = (() => {
+    try {
     const zeros = {
       overallKPI: { ...kpi.overallKPI, value: 0, change: 0 },
       emails:     { ...kpi.emails,     value: 0, change: 0 },
@@ -1268,6 +1271,7 @@ const DashboardPage = ({ dark, currentUser }) => {
     // → filter active: show zeros — never pollute filtered view with mock numbers
     if (!hasActiveFilter) return { ...kpi, chats: chatZero }
     return zeros
+    } catch { return { ...kpi, chats: chatZero } }
   })()
   const cards = [
     { ...activeKpi.overallKPI, icon: Target,       color: "blue"    },
@@ -1308,11 +1312,6 @@ const DashboardPage = ({ dark, currentUser }) => {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
               <WeeklyPerfChart data={wk} dark={dark} />
               <MonthlyKPIChart data={mk} dark={dark} />
-            </div>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5">
-              <EmailsVsChatsChart data={ec} dark={dark} />
-              <CSATTrendChart      data={cs} dark={dark} />
-              <QATrendChart        data={qa} dark={dark} />
             </div>
           </>
         )
