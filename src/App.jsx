@@ -2093,7 +2093,126 @@ const fetchProfile = async (authUser) => {
     status:   data.status   || "active",
   }
 }
+// ─────────────────────────────────────────────
+// ANIMATED LOGIN BACKGROUND
+// ─────────────────────────────────────────────
+const AnimatedLoginBackground = () => {
+  const canvasRef = useRef(null)
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext("2d")
+    let animId
+    let nodes = []
 
+    const COLORS = [
+      [99,179,237],[147,197,253],[103,232,249],
+      [129,140,248],[165,180,252],[96,165,250],
+    ]
+
+    const resize = () => {
+      canvas.width  = canvas.offsetWidth
+      canvas.height = canvas.offsetHeight
+    }
+
+    const init = () => {
+      nodes = Array.from({ length: 75 }, () => {
+        const depth = Math.random()                     // 0=far, 1=close
+        const spd   = depth * 0.28 + 0.10              // closer = faster (parallax)
+        return {
+          x:     Math.random() * canvas.width,
+          y:     Math.random() * canvas.height,
+          vx:    (Math.random() - 0.5) * spd,
+          vy:    (Math.random() - 0.5) * spd,
+          r:     depth * 1.9 + 0.55,                   // closer = bigger
+          color: COLORS[Math.floor(Math.random() * COLORS.length)],
+          alpha: depth * 0.45 + 0.18,
+          phase: Math.random() * Math.PI * 2,
+          spd:   Math.random() * 0.016 + 0.003,
+        }
+      })
+    }
+
+    resize()
+    init()
+
+    const MAX_DIST = 148
+    let t = 0
+
+    const tick = () => {
+      t += 1
+
+      // dark trail fill — creates smooth motion blur
+      ctx.fillStyle = "rgba(5,10,22,0.86)"
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+      // ── connections (drawn first, under nodes) ──────────
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const a = nodes[i], b = nodes[j]
+          const dx = a.x - b.x, dy = a.y - b.y
+          const d  = Math.sqrt(dx * dx + dy * dy)
+          if (d < MAX_DIST) {
+            const op = (1 - d / MAX_DIST) * 0.20
+            const [r, g, bl] = a.color
+            ctx.beginPath()
+            ctx.moveTo(a.x, a.y)
+            ctx.lineTo(b.x, b.y)
+            ctx.strokeStyle = `rgba(${r},${g},${bl},${op})`
+            ctx.lineWidth   = 0.55
+            ctx.stroke()
+          }
+        }
+      }
+
+      // ── nodes ───────────────────────────────────────────
+      nodes.forEach(n => {
+        n.x += n.vx
+        n.y += n.vy
+        if (n.x < 0 || n.x > canvas.width)  n.vx *= -1
+        if (n.y < 0 || n.y > canvas.height) n.vy *= -1
+
+        const pulse = Math.sin(t * n.spd + n.phase) * 0.18 + 0.82
+        const op    = Math.min(1, n.alpha * pulse)
+        const [r, g, b] = n.color
+
+        // soft glow halo
+        const grd = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, n.r * 5)
+        grd.addColorStop(0, `rgba(${r},${g},${b},${(op * 0.30).toFixed(3)})`)
+        grd.addColorStop(1, `rgba(${r},${g},${b},0)`)
+        ctx.beginPath()
+        ctx.arc(n.x, n.y, n.r * 5, 0, Math.PI * 2)
+        ctx.fillStyle = grd
+        ctx.fill()
+
+        // solid core
+        ctx.beginPath()
+        ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2)
+        ctx.fillStyle = `rgba(${r},${g},${b},${op.toFixed(3)})`
+        ctx.fill()
+      })
+
+      animId = requestAnimationFrame(tick)
+    }
+
+    tick()
+
+    const ro = new ResizeObserver(resize)
+    ro.observe(canvas)
+    return () => { cancelAnimationFrame(animId); ro.disconnect() }
+  }, [])
+
+  return (
+    <canvas
+      ref={canvasRef}
+      style={{
+        position: "absolute", inset: 0,
+        width: "100%", height: "100%",
+        display: "block", zIndex: 0, pointerEvents: "none",
+      }}
+    />
+  )
+}
 // ─────────────────────────────────────────────
 // LOGIN PAGE
 // ─────────────────────────────────────────────
