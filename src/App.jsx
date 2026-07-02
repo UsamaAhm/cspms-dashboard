@@ -1745,9 +1745,15 @@ const INIT_PERMISSIONS = {
 }
 
 const SettingsPage = ({ dark, currentUser, onChangePassword }) => {
-  const [activeTab, setActiveTab]     = useState("General")
-  const [kpiMetrics, setKpiMetrics]   = useState(KPI_METRICS_CONFIG)
+  const [activeTab,   setActiveTab]   = useState("General")
+  const [kpiMetrics,  setKpiMetrics]  = useState(KPI_METRICS_CONFIG)
   const [permissions, setPermissions] = useState(INIT_PERMISSIONS)
+  // ── General settings controlled state ──────────────────────────────────────
+  const [displayName, setDisplayName] = useState(currentUser?.name  ?? "")
+  const [timezone,    setTimezone]    = useState("UTC+5 Karachi")
+  const [language,    setLanguage]    = useState("English (US)")
+  const [savedToast,  setSavedToast]  = useState("")
+  const showToast = (msg) => { setSavedToast(msg); setTimeout(() => setSavedToast(""), 3000) }
   // ── change password state ──────────────────────────────────────────────────
   const [pwCurrent, setPwCurrent] = useState("")
   const [pwNew,     setPwNew]     = useState("")
@@ -1789,7 +1795,7 @@ const SettingsPage = ({ dark, currentUser, onChangePassword }) => {
       <GlassCard dark={dark} className="p-5">
         <SectionHeader dark={dark} title="KPI Configuration"
           subtitle="Configure metric weights, targets, and alert thresholds"
-          action={<Btn variant="primary" size="sm">Save Configuration</Btn>} />
+          action={<Btn variant="primary" size="sm" onClick={() => showToast("KPI configuration saved.")}>Save Configuration</Btn>} />
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
@@ -1837,7 +1843,7 @@ const SettingsPage = ({ dark, currentUser, onChangePassword }) => {
       <div className="space-y-4">
         <SectionHeader dark={dark} title="Role Permissions"
           subtitle="Control feature access for each role in your team"
-          action={<Btn variant="primary" size="sm">Save Permissions</Btn>} />
+          action={<Btn variant="primary" size="sm" onClick={() => showToast("Role permissions saved.")}>Save Permissions</Btn>} />
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {["Agent","Team Lead","HEAD"].map(role => (
             <GlassCard key={role} dark={dark} className="p-4">
@@ -1971,23 +1977,64 @@ const SettingsPage = ({ dark, currentUser, onChangePassword }) => {
       </div>
     )
 
-    // ── General / fallback placeholder ────────────────────
-    return (
+    // ── General ───────────────────────────────────────────────────────────────
+    if (activeTab === "General") return (
       <GlassCard dark={dark} className="p-5">
-        <SectionHeader dark={dark} title={activeTab} subtitle={`Configure ${activeTab.toLowerCase()} settings`}
-          action={<Btn variant="primary" size="sm">Save Changes</Btn>} />
+        <SectionHeader dark={dark} title="General Settings" subtitle="Update your workspace preferences"
+          action={<Btn variant="primary" size="sm" onClick={() => showToast("General settings saved.")}>Save Changes</Btn>} />
         <div className="space-y-4 mt-4">
-          {[
-            ["Display Name", currentUser?.name  ?? "Admin User"],
-            ["Email",        currentUser?.email ?? ""],
-            ["Timezone",     "UTC+5 Karachi"],
-            ["Language",     "English (US)"],
-          ].map(([lbl,val]) => (
-            <div key={lbl}>
-              <label className="block text-xs font-semibold mb-1.5" style={{ color: tokens.textMuted(dark) }}>{lbl}</label>
-              <input defaultValue={val} className="w-full text-xs rounded-xl outline-none py-2.5 px-3" style={inputSt} />
-            </div>
-          ))}
+          <div>
+            <label className="block text-xs font-semibold mb-1.5" style={{ color: tokens.textMuted(dark) }}>Display Name</label>
+            <input value={displayName} onChange={e => setDisplayName(e.target.value)}
+              className="w-full text-xs rounded-xl outline-none py-2.5 px-3" style={inputSt} />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold mb-1.5" style={{ color: tokens.textMuted(dark) }}>Email</label>
+            <input value={currentUser?.email ?? ""} readOnly
+              className="w-full text-xs rounded-xl outline-none py-2.5 px-3"
+              style={{ ...inputSt, opacity: 0.6, cursor: "default" }} />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold mb-1.5" style={{ color: tokens.textMuted(dark) }}>Timezone</label>
+            <select value={timezone} onChange={e => setTimezone(e.target.value)}
+              className="w-full text-xs rounded-xl outline-none py-2.5 px-3"
+              style={{ ...inputSt, cursor: "pointer", appearance: "none", WebkitAppearance: "none" }}>
+              {["UTC+5 Karachi","UTC+0 London","UTC-5 New York","UTC+8 Singapore"].map(tz => (
+                <option key={tz} value={tz} style={{ background: dark?"#1e293b":"#fff" }}>{tz}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold mb-1.5" style={{ color: tokens.textMuted(dark) }}>Language</label>
+            <select value={language} onChange={e => setLanguage(e.target.value)}
+              className="w-full text-xs rounded-xl outline-none py-2.5 px-3"
+              style={{ ...inputSt, cursor: "pointer", appearance: "none", WebkitAppearance: "none" }}>
+              {["English (US)","English (UK)","Urdu"].map(l => (
+                <option key={l} value={l} style={{ background: dark?"#1e293b":"#fff" }}>{l}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </GlassCard>
+    )
+
+    // ── Placeholder for unconfigured tabs (Notifications, Team & Roles, Billing) ──
+    return (
+      <GlassCard dark={dark} className="p-8">
+        <div className="flex flex-col items-center text-center py-6">
+          <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4"
+            style={{ background: dark ? "rgba(59,130,246,0.08)" : "rgba(59,130,246,0.06)" }}>
+            <Settings size={22} style={{ color: dark ? "#475569" : "#94a3b8" }} />
+          </div>
+          <p className="text-sm font-bold mb-1" style={{ color: tokens.textPrimary(dark) }}>
+            {activeTab}
+          </p>
+          <p className="text-xs mb-6" style={{ color: tokens.textMuted(dark) }}>
+            This section is ready for configuration.
+          </p>
+          <Btn variant="outline" size="sm" onClick={() => showToast(`${activeTab} settings saved.`)}>
+            Save Changes
+          </Btn>
         </div>
       </GlassCard>
     )
@@ -1996,7 +2043,13 @@ const SettingsPage = ({ dark, currentUser, onChangePassword }) => {
   return (
     <div>
       <PageHeader dark={dark} title="Settings" subtitle="Manage your workspace preferences and configurations."
-        actions={<Btn variant="primary" icon={Shield}>Save All</Btn>} />
+        actions={<Btn variant="primary" icon={Shield} onClick={() => showToast("All settings saved.")}>Save All</Btn>} />
+      {savedToast && (
+        <div className="fixed bottom-6 right-6 px-5 py-3 rounded-2xl text-sm font-semibold shadow-2xl"
+          style={{ background: "linear-gradient(135deg,#10B981,#059669)", color: "#fff", zIndex: 9999 }}>
+          ✓ {savedToast}
+        </div>
+      )}
       <div className="flex gap-1 flex-wrap mb-5">
         {SETTINGS_TABS.map(tab => (
           <button key={tab} onClick={() => setActiveTab(tab)}
@@ -2019,6 +2072,8 @@ const SettingsPage = ({ dark, currentUser, onChangePassword }) => {
 // PROFILE PAGE
 // ─────────────────────────────────────────────
 const ProfilePage = ({ dark, currentUser }) => {
+  const [profileToast, setProfileToast] = useState("")
+  const showProfileToast = (msg) => { setProfileToast(msg); setTimeout(() => setProfileToast(""), 3000) }
   const stats = [
     { label:"QA Score",    value:"91.2%", icon:Star,         color:"#F59E0B" },
     { label:"Audits Done", value:"148",   icon:ClipboardCheck,color:"#3B82F6" },
@@ -2039,7 +2094,13 @@ const ProfilePage = ({ dark, currentUser }) => {
   return (
     <div>
       <PageHeader dark={dark} title="My Profile" subtitle="Manage your personal information and preferences."
-        actions={<Btn variant="primary" icon={User}>Save Profile</Btn>} />
+        actions={<Btn variant="primary" icon={User} onClick={() => showProfileToast("Profile saved.")}>Save Profile</Btn>} />
+      {profileToast && (
+        <div className="fixed bottom-6 right-6 px-5 py-3 rounded-2xl text-sm font-semibold shadow-2xl"
+          style={{ background: "linear-gradient(135deg,#10B981,#059669)", color: "#fff", zIndex: 9999 }}>
+          ✓ {profileToast}
+        </div>
+      )}
       <GlassCard dark={dark} className="p-6 mb-5">
         <div className="flex items-start gap-5">
           <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-white text-2xl font-bold flex-shrink-0"
