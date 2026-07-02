@@ -1006,14 +1006,6 @@ const TopNav = ({ dark, setDark, page, setPage, currentUser, onLogout }) => {
         {PAGE_LABELS[page] || "Dashboard"}
       </p>
 
-      {/* Search */}
-      <div className="relative hidden md:flex items-center">
-        <Search size={13} className="absolute left-3" style={{ color: tokens.textMuted(dark) }} />
-        <input placeholder="Search agents, audits, tasks…"
-          className="pl-9 pr-4 py-2 text-sm rounded-xl outline-none w-56"
-          style={{ background: dark ? "rgba(255,255,255,0.06)" : "rgba(15,23,42,0.06)", color: tokens.textPrimary(dark) }} />
-      </div>
-
       {/* Theme toggle */}
       <button onClick={() => { setDark(!dark); close() }}
         className="w-9 h-9 rounded-xl flex items-center justify-center transition-all"
