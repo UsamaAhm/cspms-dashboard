@@ -1201,15 +1201,15 @@ const DashboardPage = ({ dark, currentUser }) => {
 
       {/* Charts row 1 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-        <WeeklyPerfChart data={charts.weeklyPerformance} dark={dark} />
-        <MonthlyKPIChart data={charts.monthlyKPI}        dark={dark} />
+        <WeeklyPerfChart data={hasActiveFilter && allEmpty ? [] : charts.weeklyPerformance} dark={dark} />
+        <MonthlyKPIChart data={hasActiveFilter && allEmpty ? [] : charts.monthlyKPI}        dark={dark} />
       </div>
 
       {/* Charts row 2 */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5">
-        <EmailsVsChatsChart data={charts.emailsVsChats} dark={dark} />
-        <CSATTrendChart      data={charts.csatTrend}     dark={dark} />
-        <QATrendChart        data={charts.qaTrend}        dark={dark} />
+        <EmailsVsChatsChart data={hasActiveFilter && allEmpty ? [] : charts.emailsVsChats} dark={dark} />
+        <CSATTrendChart      data={hasActiveFilter && allEmpty ? [] : charts.csatTrend}     dark={dark} />
+        <QATrendChart        data={hasActiveFilter && allEmpty ? [] : charts.qaTrend}        dark={dark} />
       </div>
 
       {hasFilters && allEmpty ? (
