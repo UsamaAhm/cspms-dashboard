@@ -1269,18 +1269,6 @@ const DashboardPage = ({ dark, currentUser }) => {
     if (!hasActiveFilter) return { ...kpi, chats: chatZero }
     return zeros
   })()
-    const sum = (k) => rows.reduce((s, r) => s + (parseFloat(r[k]) || 0), 0)
-    const avg = (k) => +(sum(k) / rows.length).toFixed(1)
-    return {
-      overallKPI: { ...kpi.overallKPI, value: avg("kpi"),                change: 0 },
-      emails:     { ...kpi.emails,     value: Math.round(sum("emails")), change: 0 },
-      chats:      { ...kpi.chats,      value: Math.round(sum("chats")),  change: 0 },
-      csat:       { ...kpi.csat,       value: avg("csat"),               change: 0 },
-      qa:         { ...kpi.qa,         value: avg("qa"),                 change: 0 },
-      attendance: { ...kpi.attendance, value: kpi.attendance.value,      change: 0 },
-    }
-  })()
-
   const cards = [
     { ...activeKpi.overallKPI, icon: Target,       color: "blue"    },
     { ...activeKpi.emails,     icon: Mail,          color: "cyan"    },
