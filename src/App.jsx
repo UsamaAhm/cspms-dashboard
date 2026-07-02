@@ -88,7 +88,59 @@ const useChartData = () => {
   ]
   return { weeklyPerformance, monthlyKPI, emailsVsChats, csatTrend, qaTrend }
 }
-
+// ─────────────────────────────────────────────
+// LIVE DATA CONFIG
+// Paste your Google Sheets "Publish to web" CSV URL in sheetsUrl.
+// Example: "https://docs.google.com/spreadsheets/d/SHEET_ID/export?format=csv&gid=0"
+// Leave as "" to keep mock defaults when no filter is active.
+// ─────────────────────────────────────────────
+const LIVE_DATA_CONFIG = {
+  sheetsUrl: "",
+}
+/**
+ * Fetches live email records from Google Sheets CSV.
+ * Returns { data: row[]|null, loaded: bool }
+ *   null  → fetch failed or not configured → may fall back to mock
+ *   []    → fetch succeeded but sheet empty → show 0, not mock
+ *   [...] → live rows (each gets channel="email" by default per Rule 10)
+ */
+const useLiveEmailData = () => {
+  const [data,   setData]   = useState(null)
+  const [loaded, setLoaded] = useState(false)
+  useEffect(() => {
+    if (!LIVE_DATA_CONFIG.sheetsUrl) { setLoaded(true); return }
+    fetch(LIVE_DATA_CONFIG.sheetsUrl)
+      .then(r => { if (!r.ok) throw new Error("fetch failed"); return r.text() })
+      .then(csv => {
+        const lines   = csv.trim().split("\n").filter(Boolean)
+        if (lines.length < 2) { setData([]); setLoaded(true); return }
+        const headers = lines[0].split(",").map(h => h.replace(/^"|"$/g, "").trim())
+        const rows    = lines.slice(1).map(line => {
+          const vals = line.split(",").map(v => v.replace(/^"|"$/g, "").trim())
+          const obj  = {}
+          headers.forEach((h, i) => { obj[h] = vals[i] ?? "" })
+          // Rule 10: Help Scout / email_tickets records default to email channel
+          if (!obj.channel && !obj.type) obj.channel = "email"
+          // Normalise agent name → "agent" key for applyFilters compatibility
+          if (!obj.agent) obj.agent = (
+            obj.agent_name || obj["Assignee"]   || obj["Rated users"] ||
+            obj["Rated user"] || obj.rated_user ||
+            obj.closed_by    || obj["Closed by"] || ""
+          ).trim()
+          // Normalise date → "date" key for applyFilters compatibility
+          if (!obj.date) obj.date = (
+            obj["Created at"] || obj.created_at ||
+            obj["Closed at"]  || obj.closed_at  || ""
+          ).trim()
+          return obj
+        })
+        setData(rows)
+        setLoaded(true)
+      })
+      .catch(() => { setData(null); setLoaded(true) })
+  }, [])
+  return { data, loaded }
+}
 const useTableData = () => {
   const recentActivities = [
     { id: 1, agent: "Muhammad Junaid",  action: "Completed QA Audit",       score: 94,   time: "10 min ago", status: "success", date: "2026-06-29", channel: "email" },
@@ -224,14 +276,20 @@ const applyFilters = (items, filters) => {
   const toDate   = safeDate(to)
 
   return items.filter(item => {
-    const itemDate = safeDate(item.date || item.due || "")
+    const itemDate = safeDate(
+      item.date          || item.due           ||
+      item["Created at"] || item["created_at"] ||
+      item["Closed at"]  || item["closed_at"]  || ""
+    )
     if (fromDate && itemDate && itemDate < fromDate) return false
     if (toDate   && itemDate && itemDate > toDate)   return false
 
     if (agent && agent !== "all") {
       const nameField = (
-        item.agent || item.agentName || item.assignee ||
-        item.agent_name || item["Assignee"] || item["Rated users"] || ""
+        item.agent        || item.agentName  || item.assignee    ||
+        item.agent_name   || item.rated_user ||
+        item["Assignee"]  || item["Rated users"] || item["Rated user"] ||
+        item["closed_by"] || item["Closed by"]   || ""
       ).toString().trim()
       if (agentSlug(nameField) !== agent) return false
     }
@@ -1135,33 +1193,82 @@ const DashboardPage = ({ dark, currentUser }) => {
   const charts = useChartData()
   const tables = useTableData()
   const { agentLock, effectiveFilters, handleFilter, handleReset, filterData } = usePageFilters(currentUser)
+  const { data: liveEmailRows, loaded: liveLoaded } = useLiveEmailData()
 
-  const activeAgent     = effectiveFilters.agent && effectiveFilters.agent !== "all" ? effectiveFilters.agent : null
-  const hasActiveFilter = !!(activeAgent || effectiveFilters.from || effectiveFilters.to)
+  const activeAgent = effectiveFilters.agent && effectiveFilters.agent !== "all" ? effectiveFilters.agent : null
+  const activeCh    = effectiveFilters.channel && effectiveFilters.channel !== "all" ? effectiveFilters.channel : null
+  const hasActiveFilter = !!(activeAgent || effectiveFilters.from || effectiveFilters.to || activeCh)
 
-  // Filtered table data — moved up so KPI cards can use filtLeaderboard
+  // Live data state:
+  //   liveAvailable = API responded (even if empty row count) — do NOT mix mock in this case
+  //   liveHasData   = API responded with actual rows
+  const liveAvailable = liveLoaded && liveEmailRows !== null
+  const liveHasData   = liveAvailable && liveEmailRows.length > 0
+
+  // Filtered mock table data — for activity / audit / task display only
   const filtActivities  = filterData(tables.recentActivities)
   const filtAudits      = filterData(tables.latestAudits)
-  const filtLeaderboard = filterData(tables.leaderboard)
   const filtTasks       = filterData(tables.pendingTasks)
-  const allEmpty        = filtActivities.length === 0 && filtAudits.length === 0 && filtLeaderboard.length === 0 && filtTasks.length === 0
-  const hasFilters      = Object.values(effectiveFilters).some(v => v && v !== "all" && v !== "")
+  // Leaderboard intentionally ignores channel filter (rankings are cross-channel)
+  const filtLeaderboard = applyFilters(tables.leaderboard, { ...effectiveFilters, channel: "all" })
 
-  // KPI cards: when any filter is active, derive values from filtered leaderboard rows.
-  // No match → show all zeros. No filter → fall through to base mock kpi.
+  const allTableEmpty = filtActivities.length === 0 && filtAudits.length === 0 && filtLeaderboard.length === 0 && filtTasks.length === 0
+  const hasFilters    = Object.values(effectiveFilters).some(v => v && v !== "all" && v !== "")
+
+  // ── KPI card values ────────────────────────────────────────────────────────
+  // Rules enforced here:
+  //   • Chat = 0 always (Webbotify not connected)
+  //   • Live data available → use live only, never mix with mock numbers
+  //   • Filter active + no live data → show real 0s (not fake mock values)
+  //   • No filter + no live data → show mock as a display default
+  const chatZero = { ...kpi.chats, value: 0, change: 0 }
   const activeKpi = (() => {
-    if (!hasActiveFilter) return kpi
-    const rows = filtLeaderboard
-    if (rows.length === 0) {
+    const zeros = {
+      overallKPI: { ...kpi.overallKPI, value: 0, change: 0 },
+      emails:     { ...kpi.emails,     value: 0, change: 0 },
+      chats:      chatZero,
+      csat:       { ...kpi.csat,       value: 0, change: 0 },
+      qa:         { ...kpi.qa,         value: 0, change: 0 },
+      attendance: { ...kpi.attendance, value: 0, change: 0 },
+    }
+
+    // Chat is never connected — always 0 regardless of other filters
+    if (activeCh === "chat") return zeros
+
+    // Live data is available — use it exclusively, never mix with mock
+    if (liveAvailable) {
+      if (!liveHasData) return zeros  // sheet responded but empty → show 0
+      const filtLive = applyFilters(liveEmailRows, {
+        from:  effectiveFilters.from,
+        to:    effectiveFilters.to,
+        agent: effectiveFilters.agent,
+      })
+      const n = filtLive.length
+      const fAvg = (fields) => {
+        for (const f of fields) {
+          const vals = filtLive.map(r => parseFloat(r[f] ?? "") || 0).filter(v => v > 0)
+          if (vals.length) return +(vals.reduce((s, v) => s + v, 0) / vals.length).toFixed(1)
+        }
+        return 0
+      }
+      const avgCsat = fAvg(["csat_score","csat","CSAT Score","CSAT","Rating"])
+      const avgQa   = fAvg(["qa_score","qa","QA Score","QA"])
       return {
-        overallKPI: { ...kpi.overallKPI, value: 0,   change: 0 },
-        emails:     { ...kpi.emails,     value: 0,   change: 0 },
-        chats:      { ...kpi.chats,      value: 0,   change: 0 },
-        csat:       { ...kpi.csat,       value: 0,   change: 0 },
-        qa:         { ...kpi.qa,         value: 0,   change: 0 },
-        attendance: { ...kpi.attendance, value: 0,   change: 0 },
+        overallKPI: { ...kpi.overallKPI, value: avgQa || 0,   change: 0 },
+        emails:     { ...kpi.emails,     value: n,             change: 0 },
+        chats:      chatZero,
+        csat:       { ...kpi.csat,       value: avgCsat || 0, change: 0 },
+        qa:         { ...kpi.qa,         value: avgQa   || 0, change: 0 },
+        attendance: { ...kpi.attendance, value: 0,             change: 0 },
       }
     }
+
+    // Live not configured or fetch failed (liveEmailRows === null)
+    // → no filter active: show mock as display default
+    // → filter active: show zeros — never pollute filtered view with mock numbers
+    if (!hasActiveFilter) return { ...kpi, chats: chatZero }
+    return zeros
+  })()
     const sum = (k) => rows.reduce((s, r) => s + (parseFloat(r[k]) || 0), 0)
     const avg = (k) => +(sum(k) / rows.length).toFixed(1)
     return {
@@ -1198,11 +1305,30 @@ const DashboardPage = ({ dark, currentUser }) => {
         {cards.map((c, i) => <KPICard key={i} {...c} dark={dark} />)}
       </div>
 
-      {/* Charts row 1 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-        <WeeklyPerfChart data={hasActiveFilter && allEmpty ? [] : charts.weeklyPerformance} dark={dark} />
-        <MonthlyKPIChart data={hasActiveFilter && allEmpty ? [] : charts.monthlyKPI}        dark={dark} />
-      </div>
+      {/* Charts: show mock only when no filter is active and no live data is connected.
+          Hide (empty arrays) when any filter is active — avoids fake mock numbers appearing
+          alongside real 0 KPI cards. Real chart aggregation replaces this when sheetsUrl is set. */}
+      {(() => {
+        const showMock = !hasActiveFilter && !liveHasData
+        const wk = showMock ? charts.weeklyPerformance : []
+        const mk = showMock ? charts.monthlyKPI        : []
+        const ec = showMock ? charts.emailsVsChats     : []
+        const cs = showMock ? charts.csatTrend         : []
+        const qa = showMock ? charts.qaTrend           : []
+        return (
+          <>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+              <WeeklyPerfChart data={wk} dark={dark} />
+              <MonthlyKPIChart data={mk} dark={dark} />
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5">
+              <EmailsVsChatsChart data={ec} dark={dark} />
+              <CSATTrendChart      data={cs} dark={dark} />
+              <QATrendChart        data={qa} dark={dark} />
+            </div>
+          </>
+        )
+      })()}
 
       {/* Charts row 2 */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5">
@@ -1211,7 +1337,7 @@ const DashboardPage = ({ dark, currentUser }) => {
         <QATrendChart        data={hasActiveFilter && allEmpty ? [] : charts.qaTrend}        dark={dark} />
       </div>
 
-      {hasFilters && allEmpty ? (
+      {hasFilters && allTableEmpty ? (
         <GlassCard dark={dark} className="p-5 mb-4">
           <EmptyState dark={dark} title="No records found for selected filters"
             description="Try adjusting your date range, agent, channel, or search term."
