@@ -1316,14 +1316,6 @@ const DashboardPage = ({ dark, currentUser }) => {
           </>
         )
       })()}
-
-      {/* Charts row 2 */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5">
-        <EmailsVsChatsChart data={hasActiveFilter && allEmpty ? [] : charts.emailsVsChats} dark={dark} />
-        <CSATTrendChart      data={hasActiveFilter && allEmpty ? [] : charts.csatTrend}     dark={dark} />
-        <QATrendChart        data={hasActiveFilter && allEmpty ? [] : charts.qaTrend}        dark={dark} />
-      </div>
-
       {hasFilters && allTableEmpty ? (
         <GlassCard dark={dark} className="p-5 mb-4">
           <EmptyState dark={dark} title="No records found for selected filters"
