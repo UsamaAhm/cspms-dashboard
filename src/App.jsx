@@ -975,7 +975,8 @@ const TopNav = ({ dark, setDark, page, setPage, currentUser, onLogout }) => {
   const [notifOpen,  setNotifOpen]  = useState(false)
   const [profilOpen, setProfilOpen] = useState(false)
   const [notifs,     setNotifs]     = useState(NOTIFICATIONS)
-  const notifRef = useRef(null)
+  const notifRef  = useRef(null)
+  const profilRef = useRef(null)
   const close = () => { setNotifOpen(false); setProfilOpen(false) }
   const role   = currentUser?.role ?? ""
   const initials = currentUser?.initials ?? "??"
