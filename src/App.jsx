@@ -2259,10 +2259,17 @@ const LoginPage = ({ onLogin }) => {
         <div className="text-center mb-8">
           <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
             style={{ background: "linear-gradient(135deg,#3B82F6,#2563EB)", boxShadow: "0 8px 32px rgba(59,130,246,0.5)" }}>
-            <BarChart2 size={28} color="#fff" />
+            <svg viewBox="0 0 24 24" fill="none" width="28" height="28" aria-hidden="true">
+              <rect x="2"  y="14" width="4.5" height="8"  rx="1" fill="white" fillOpacity="0.55"/>
+              <rect x="9"  y="9"  width="4.5" height="13" rx="1" fill="white" fillOpacity="0.80"/>
+              <rect x="16" y="4"  width="4.5" height="18" rx="1" fill="white"/>
+              <path d="M4.25 14 L11.25 9 L18.25 4" stroke="white" strokeWidth="1.5"
+                strokeLinecap="round" strokeLinejoin="round" strokeOpacity="0.5"/>
+              <circle cx="18.25" cy="4" r="1.8" fill="white"/>
+            </svg>
           </div>
           <h1 className="text-2xl font-bold text-white mb-1">CSPMS</h1>
-          <p className="text-sm" style={{ color: "#94a3b8" }}>Customer Support Performance Management</p>
+          <p className="text-sm" style={{ color: "#94a3b8" }}>Customer Support Performance Management System</p>
         </div>
 
         <div className="rounded-2xl p-8" style={cardStyle}>
