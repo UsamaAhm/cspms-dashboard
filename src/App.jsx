@@ -1137,24 +1137,52 @@ const DashboardPage = ({ dark, currentUser }) => {
   const tables = useTableData()
   const { agentLock, effectiveFilters, handleFilter, handleReset, filterData } = usePageFilters(currentUser)
 
-  const activeAgent = effectiveFilters.agent && effectiveFilters.agent !== "all" ? effectiveFilters.agent : null
-  const agentKpi    = activeAgent ? AGENT_KPI_MOCK[activeAgent] : null
+  const activeAgent     = effectiveFilters.agent && effectiveFilters.agent !== "all" ? effectiveFilters.agent : null
+  const hasActiveFilter = !!(activeAgent || effectiveFilters.from || effectiveFilters.to)
 
-  const cards = [
-    { ...(agentKpi?.overallKPI ?? kpi.overallKPI), icon: Target,       color: "blue"    },
-    { ...(agentKpi?.emails     ?? kpi.emails),     icon: Mail,          color: "cyan"    },
-    { ...(agentKpi?.chats      ?? kpi.chats),      icon: MessageSquare, color: "purple"  },
-    { ...(agentKpi?.csat       ?? kpi.csat),       icon: Star,          color: "amber"   },
-    { ...(agentKpi?.qa         ?? kpi.qa),         icon: Shield,        color: "emerald" },
-    { ...(agentKpi?.attendance ?? kpi.attendance), icon: UserCheck,     color: "rose"    },
-  ]
-
+  // Filtered table data — moved up so KPI cards can use filtLeaderboard
   const filtActivities  = filterData(tables.recentActivities)
   const filtAudits      = filterData(tables.latestAudits)
   const filtLeaderboard = filterData(tables.leaderboard)
   const filtTasks       = filterData(tables.pendingTasks)
   const allEmpty        = filtActivities.length === 0 && filtAudits.length === 0 && filtLeaderboard.length === 0 && filtTasks.length === 0
   const hasFilters      = Object.values(effectiveFilters).some(v => v && v !== "all" && v !== "")
+
+  // KPI cards: when any filter is active, derive values from filtered leaderboard rows.
+  // No match → show all zeros. No filter → fall through to base mock kpi.
+  const activeKpi = (() => {
+    if (!hasActiveFilter) return kpi
+    const rows = filtLeaderboard
+    if (rows.length === 0) {
+      return {
+        overallKPI: { ...kpi.overallKPI, value: 0,   change: 0 },
+        emails:     { ...kpi.emails,     value: 0,   change: 0 },
+        chats:      { ...kpi.chats,      value: 0,   change: 0 },
+        csat:       { ...kpi.csat,       value: 0,   change: 0 },
+        qa:         { ...kpi.qa,         value: 0,   change: 0 },
+        attendance: { ...kpi.attendance, value: 0,   change: 0 },
+      }
+    }
+    const sum = (k) => rows.reduce((s, r) => s + (parseFloat(r[k]) || 0), 0)
+    const avg = (k) => +(sum(k) / rows.length).toFixed(1)
+    return {
+      overallKPI: { ...kpi.overallKPI, value: avg("kpi"),                change: 0 },
+      emails:     { ...kpi.emails,     value: Math.round(sum("emails")), change: 0 },
+      chats:      { ...kpi.chats,      value: Math.round(sum("chats")),  change: 0 },
+      csat:       { ...kpi.csat,       value: avg("csat"),               change: 0 },
+      qa:         { ...kpi.qa,         value: avg("qa"),                 change: 0 },
+      attendance: { ...kpi.attendance, value: kpi.attendance.value,      change: 0 },
+    }
+  })()
+
+  const cards = [
+    { ...activeKpi.overallKPI, icon: Target,       color: "blue"    },
+    { ...activeKpi.emails,     icon: Mail,          color: "cyan"    },
+    { ...activeKpi.chats,      icon: MessageSquare, color: "purple"  },
+    { ...activeKpi.csat,       icon: Star,          color: "amber"   },
+    { ...activeKpi.qa,         icon: Shield,        color: "emerald" },
+    { ...activeKpi.attendance, icon: UserCheck,     color: "rose"    },
+  ]
 
   return (
     <div>
