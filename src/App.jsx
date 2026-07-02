@@ -2320,60 +2320,7 @@ const LoginPage = ({ onLogin }) => {
         background: "radial-gradient(ellipse 90% 70% at 50% 10%, #1a3a5c 0%, #0c1829 52%, #060d18 100%)",
       }}>
 
-      {/* ── Constellation / network background layer ── */}
-      <svg aria-hidden="true" style={{ position:"absolute", inset:0, width:"100%", height:"100%", pointerEvents:"none", zIndex:0 }}>
-        <defs>
-          <radialGradient id="lg-glow-a" cx="28%" cy="20%" r="44%">
-            <stop offset="0%" stopColor="#3B82F6" stopOpacity="0.14"/>
-            <stop offset="100%" stopColor="#3B82F6" stopOpacity="0"/>
-          </radialGradient>
-          <radialGradient id="lg-glow-b" cx="75%" cy="74%" r="38%">
-            <stop offset="0%" stopColor="#6366F1" stopOpacity="0.10"/>
-            <stop offset="100%" stopColor="#6366F1" stopOpacity="0"/>
-          </radialGradient>
-          <radialGradient id="lg-glow-c" cx="88%" cy="12%" r="30%">
-            <stop offset="0%" stopColor="#22D3EE" stopOpacity="0.07"/>
-            <stop offset="100%" stopColor="#22D3EE" stopOpacity="0"/>
-          </radialGradient>
-        </defs>
-        <rect width="100%" height="100%" fill="url(#lg-glow-a)"/>
-        <rect width="100%" height="100%" fill="url(#lg-glow-b)"/>
-        <rect width="100%" height="100%" fill="url(#lg-glow-c)"/>
-
-        {/* connecting lines */}
-        {[
-          ["10%","15%","36%","40%"],["36%","40%","60%","20%"],["60%","20%","84%","45%"],
-          ["84%","45%","70%","74%"],["70%","74%","44%","82%"],["44%","82%","18%","65%"],
-          ["18%","65%","10%","15%"],["36%","40%","44%","82%"],["60%","20%","70%","74%"],
-          ["84%","45%","60%","20%"],["10%","15%","60%","20%"],["18%","65%","60%","20%"],
-        ].map(([x1,y1,x2,y2],i) => (
-          <line key={i} x1={x1} y1={y1} x2={x2} y2={y2}
-            stroke="#60A5FA" strokeWidth="0.6"
-            style={{ animation:`cspms-line-fade ${3+i*0.35}s ease-in-out ${i*0.28}s infinite` }}/>
-        ))}
-
-        {/* glowing node points */}
-        {[
-          ["10%","15%",2.8,0.0],["36%","40%",3.2,0.5],["60%","20%",2.4,1.0],
-          ["84%","45%",2.8,0.3],["70%","74%",2.4,0.8],["44%","82%",3.0,1.2],
-          ["18%","65%",2.4,0.6],["52%","52%",2.0,1.5],["28%","32%",1.8,0.9],
-          ["76%","28%",2.2,0.4],["14%","52%",1.8,1.1],["63%","87%",1.8,0.7],
-        ].map(([cx,cy,r,d],i) => (
-          <circle key={i} cx={cx} cy={cy} r={r} fill="#93C5FD"
-            style={{ animation:`cspms-pulse-node ${2.6+i*0.18}s ease-in-out ${d}s infinite` }}/>
-        ))}
-
-        {/* small floating particle dots */}
-        {[
-          ["22%","28%"],["47%","12%"],["68%","38%"],["88%","18%"],
-          ["8%","72%"],["57%","62%"],["92%","58%"],["33%","88%"],
-          ["80%","85%"],["42%","48%"],
-        ].map(([cx,cy],i) => (
-          <circle key={i} cx={cx} cy={cy} r="1" fill="#BFDBFE"
-            style={{ animation:`cspms-drift-particle ${5+i*0.65}s ease-in-out ${i*0.45}s infinite` }}/>
-        ))}
-      </svg>
-
+      <AnimatedLoginBackground />
       <div className="w-full max-w-md" style={{ position:"relative", zIndex:1 }}>
         <div className="text-center mb-8">
           <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
