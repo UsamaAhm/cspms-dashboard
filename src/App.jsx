@@ -1065,7 +1065,7 @@ const TopNav = ({ dark, setDark, page, setPage, currentUser, onLogout }) => {
       </div>
 
       {/* Profile */}
-      <div className="relative" style={{ zIndex: 200 }}>
+      <div className="relative" ref={profilRef} style={{ zIndex: 200 }}>
         <button onClick={() => { setProfilOpen(!profilOpen); setNotifOpen(false) }}
           className="flex items-center gap-2 transition-all">
           <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-sm font-extrabold shadow-lg"
