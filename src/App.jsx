@@ -173,7 +173,7 @@ const FC_ATTEND = [
 ]
 const FILTER_CONFIGS = {
   dashboard:   { showExport:true,  exportLabel:"Export Report",    fields:[{ key:"from",label:"From",type:"daterange" },{ key:"to",label:"To",type:"daterange" },{ key:"agent",label:"Agent",type:"select",options:FC_AGENTS,defaultValue:"all" },{ key:"channel",label:"Channel",type:"channel" }] },
-  performance: { showExport:true,  exportLabel:"Export",           fields:[{ key:"from",label:"From",type:"daterange" },{ key:"to",label:"To",type:"daterange" },{ key:"agent",label:"Agent",type:"select",options:FC_AGENTS,defaultValue:"all" },{ key:"kpiType",label:"KPI Type",type:"select",options:FC_KPI_TYPES,defaultValue:"all" },{ key:"channel",label:"Channel",type:"channel" }] },
+  performance: { showExport:true,  exportLabel:"Export",           fields:[{ key:"from",label:"From",type:"daterange" },{ key:"to",label:"To",type:"daterange" },{ key:"agent",label:"Agent",type:"select",options:FC_AGENTS,defaultValue:"all" },{ key:"channel",label:"Channel",type:"channel" }] },
   "qa-audits": { showExport:true,  exportLabel:"Export Audits",    fields:[{ key:"from",label:"From",type:"daterange" },{ key:"to",label:"To",type:"daterange" },{ key:"agent",label:"Agent",type:"select",options:FC_AGENTS,defaultValue:"all" },{ key:"channel",label:"Channel",type:"channel" },{ key:"status",label:"Status",type:"select",options:FC_STATUS,defaultValue:"all" }] },
   attendance:  { showExport:true,  exportLabel:"Export Attendance",fields:[{ key:"from",label:"From",type:"daterange" },{ key:"to",label:"To",type:"daterange" },{ key:"agent",label:"Agent",type:"select",options:FC_AGENTS,defaultValue:"all" },{ key:"status",label:"Status",type:"select",options:FC_ATTEND,defaultValue:"all" }] },
   tasks:       { showExport:false, exportLabel:"",                 fields:[{ key:"from",label:"From",type:"daterange" },{ key:"to",label:"To",type:"daterange" },{ key:"agent",label:"Assignee",type:"select",options:FC_AGENTS,defaultValue:"all" },{ key:"status",label:"Status",type:"select",options:FC_TASK_STATUS,defaultValue:"all" },{ key:"priority",label:"Priority",type:"select",options:FC_PRIORITY,defaultValue:"all" }] },
@@ -1244,13 +1244,27 @@ const PerformancePage = ({ dark, currentUser }) => {
 
   const activeAgent = effectiveFilters.agent && effectiveFilters.agent !== "all" ? effectiveFilters.agent : null
   const agentKpi    = activeAgent ? AGENT_KPI_MOCK[activeAgent] : null
+  const activeCh    = effectiveFilters.channel && effectiveFilters.channel !== "all" ? effectiveFilters.channel : null
+
+  // Channel-filtered chart data — zero out the non-selected channel series
+  const perfChartData = charts.weeklyPerformance.map(row => ({
+    ...row,
+    emails: activeCh === "chat"  ? 0 : row.emails,
+    chats:  activeCh === "email" ? 0 : row.chats,
+  }))
+
+  // Second KPI card switches between Emails and Chats based on active channel
+  const emailCard = activeCh === "chat"
+    ? { ...(agentKpi?.chats  ?? kpi.chats),  icon: MessageSquare, color: "purple" }
+    : { ...(agentKpi?.emails ?? kpi.emails), icon: Mail,          color: "cyan"   }
 
   const cards = [
     { ...(agentKpi?.overallKPI ?? kpi.overallKPI), icon: Target, color: "blue"    },
-    { ...(agentKpi?.emails     ?? kpi.emails),     icon: Mail,   color: "cyan"    },
+    emailCard,
     { ...(agentKpi?.csat       ?? kpi.csat),       icon: Star,   color: "amber"   },
     { ...(agentKpi?.qa         ?? kpi.qa),         icon: Shield, color: "emerald" },
   ]
+
   return (
     <div>
       <PageHeader dark={dark} title="Performance" subtitle="Detailed agent performance analysis and trends."
@@ -1261,8 +1275,8 @@ const PerformancePage = ({ dark, currentUser }) => {
         {cards.map((c, i) => <KPICard key={i} {...c} dark={dark} />)}
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-        <WeeklyPerfChart data={charts.weeklyPerformance} dark={dark} />
-        <MonthlyKPIChart data={charts.monthlyKPI}        dark={dark} />
+        <WeeklyPerfChart data={perfChartData} dark={dark} />
+        <MonthlyKPIChart data={charts.monthlyKPI} dark={dark} />
       </div>
       <GlassCard dark={dark} className="p-5">
         <SectionHeader dark={dark} title="Agent Performance Breakdown"
@@ -2072,33 +2086,55 @@ const SettingsPage = ({ dark, currentUser, onChangePassword }) => {
 // PROFILE PAGE
 // ─────────────────────────────────────────────
 const ProfilePage = ({ dark, currentUser }) => {
-  const [profileToast, setProfileToast] = useState("")
-  const showProfileToast = (msg) => { setProfileToast(msg); setTimeout(() => setProfileToast(""), 3000) }
-  const stats = [
-    { label:"QA Score",    value:"91.2%", icon:Star,         color:"#F59E0B" },
-    { label:"Audits Done", value:"148",   icon:ClipboardCheck,color:"#3B82F6" },
-    { label:"Attendance",  value:"96%",   icon:UserCheck,    color:"#10B981" },
-    { label:"Tasks Done",  value:"243",   icon:CheckSquare,  color:"#8B5CF6" },
-  ]
+  // ── editable state — persisted to localStorage (no Supabase touched) ────────
+  const LS_KEY = "cspms_profile_prefs"
+  const _saved = (() => { try { return JSON.parse(localStorage.getItem(LS_KEY) || "{}") } catch { return {} } })()
+
+  const [editing,    setEditing]    = useState(false)
+  const [fullName,   setFullName]   = useState(_saved.fullName   ?? currentUser?.name ?? "")
+  const [phone,      setPhone]      = useState(_saved.phone      ?? "+92 300 0000000")
+  const [department, setDepartment] = useState(_saved.department ?? "Customer Support")
+  const [location,   setLocation]   = useState(_saved.location   ?? "Karachi, PK")
+  const [draft,      setDraft]      = useState({})
+  const [toast,      setToast]      = useState("")
+
+  const startEdit = () => {
+    setDraft({ fullName, phone, department, location })
+    setEditing(true)
+  }
+  const cancelEdit = () => {
+    setFullName(draft.fullName); setPhone(draft.phone)
+    setDepartment(draft.department); setLocation(draft.location)
+    setEditing(false)
+  }
+  const saveEdit = () => {
+    try { localStorage.setItem(LS_KEY, JSON.stringify({ fullName, phone, department, location })) } catch {}
+    setEditing(false)
+    setToast("Profile updated successfully.")
+    setTimeout(() => setToast(""), 3000)
+  }
+
+  const inputSt = {
+    background: dark ? "rgba(255,255,255,0.06)" : "rgba(15,23,42,0.05)",
+    color: tokens.textPrimary(dark),
+    border: `1px solid ${dark ? "rgba(255,255,255,0.08)" : "rgba(148,163,184,0.25)"}`,
+  }
+  const readSt = { ...inputSt, opacity: 0.6, cursor: "default" }
+
   const activities = [
     { action:"Completed QA audit — Muhammad Junaid scored 94%", time:"2h ago", icon:ClipboardCheck },
     { action:"Updated KPI configuration",            time:"5h ago", icon:Settings       },
     { action:"Reviewed 12 email tickets",            time:"1d ago", icon:Mail           },
     { action:"Team meeting — performance review",    time:"2d ago", icon:Star           },
   ]
-  const inputSt = {
-    background: dark ? "rgba(255,255,255,0.06)" : "rgba(15,23,42,0.05)",
-    color: tokens.textPrimary(dark),
-    border: `1px solid ${dark ? "rgba(255,255,255,0.08)" : "rgba(148,163,184,0.25)"}`,
-  }
+
   return (
     <div>
-      <PageHeader dark={dark} title="My Profile" subtitle="Manage your personal information and preferences."
-        actions={<Btn variant="primary" icon={User} onClick={() => showProfileToast("Profile saved.")}>Save Profile</Btn>} />
-      {profileToast && (
+      <PageHeader dark={dark} title="My Profile" subtitle="Manage your personal information and preferences." />
+      {toast && (
         <div className="fixed bottom-6 right-6 px-5 py-3 rounded-2xl text-sm font-semibold shadow-2xl"
-          style={{ background: "linear-gradient(135deg,#10B981,#059669)", color: "#fff", zIndex: 9999 }}>
-          ✓ {profileToast}
+          style={{ background:"linear-gradient(135deg,#10B981,#059669)", color:"#fff", zIndex:9999 }}>
+          ✓ {toast}
         </div>
       )}
       <GlassCard dark={dark} className="p-6 mb-5">
@@ -2108,41 +2144,62 @@ const ProfilePage = ({ dark, currentUser }) => {
             {currentUser?.initials ?? "??"}
           </div>
           <div className="flex-1">
-            <h2 className="text-lg font-bold" style={{ color: tokens.textPrimary(dark) }}>{currentUser?.name ?? "—"}</h2>
-            <p className="text-sm" style={{ color:"#3B82F6" }}>{currentUser?.role ?? "—"} — Customer Support</p>
-            <p className="text-xs mt-1" style={{ color: tokens.textMuted(dark) }}>Karachi, PK</p>
+            <h2 className="text-lg font-bold" style={{ color: tokens.textPrimary(dark) }}>{fullName || currentUser?.name || "—"}</h2>
+            <p className="text-sm" style={{ color:"#3B82F6" }}>{currentUser?.role ?? "—"} — {department}</p>
+            <p className="text-xs mt-1" style={{ color: tokens.textMuted(dark) }}>{location}</p>
           </div>
           <div className="px-3 py-1 rounded-full text-xs font-bold"
             style={{ background:"rgba(16,185,129,0.12)", color:"#10B981" }}>Active</div>
         </div>
       </GlassCard>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-        {stats.map(s => (
-          <GlassCard key={s.label} dark={dark} className="p-4 text-center">
-            <div className="w-8 h-8 rounded-xl flex items-center justify-center mx-auto mb-2"
-              style={{ background:`${s.color}20` }}>
-              <s.icon size={16} style={{ color: s.color }} />
-            </div>
-            <p className="text-lg font-bold" style={{ color: tokens.textPrimary(dark) }}>{s.value}</p>
-            <p className="text-xs" style={{ color: tokens.textMuted(dark) }}>{s.label}</p>
-          </GlassCard>
-        ))}
-      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <GlassCard dark={dark} className="p-5">
-          <SectionHeader dark={dark} title="Personal Information" subtitle="Update your profile details" />
+          <SectionHeader dark={dark} title="Personal Information" subtitle="Your profile details"
+            action={!editing && <Btn variant="outline" size="sm" onClick={startEdit}>Edit Profile</Btn>} />
           <div className="space-y-4 mt-4">
-            {[
-              ["Full Name",  currentUser?.name  ?? ""],
-              ["Email",      currentUser?.email ?? ""],
-              ["Phone",      "+92 300 0000000"],
-              ["Department", "Customer Support"],
-            ].map(([lbl,val]) => (
-              <div key={lbl}>
-                <label className="block text-xs font-semibold mb-1.5" style={{ color: tokens.textMuted(dark) }}>{lbl}</label>
-                <input defaultValue={val} className="w-full text-xs rounded-xl outline-none py-2.5 px-3" style={inputSt} />
+            <div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: tokens.textMuted(dark) }}>Full Name</label>
+              {editing
+                ? <input value={fullName} onChange={e => setFullName(e.target.value)}
+                    className="w-full text-xs rounded-xl outline-none py-2.5 px-3" style={inputSt} />
+                : <input readOnly value={fullName}
+                    className="w-full text-xs rounded-xl outline-none py-2.5 px-3" style={readSt} />}
+            </div>
+            <div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: tokens.textMuted(dark) }}>Email</label>
+              <input readOnly value={currentUser?.email ?? ""}
+                className="w-full text-xs rounded-xl outline-none py-2.5 px-3" style={readSt} />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: tokens.textMuted(dark) }}>Phone</label>
+              {editing
+                ? <input value={phone} onChange={e => setPhone(e.target.value)}
+                    className="w-full text-xs rounded-xl outline-none py-2.5 px-3" style={inputSt} />
+                : <input readOnly value={phone}
+                    className="w-full text-xs rounded-xl outline-none py-2.5 px-3" style={readSt} />}
+            </div>
+            <div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: tokens.textMuted(dark) }}>Department</label>
+              {editing
+                ? <input value={department} onChange={e => setDepartment(e.target.value)}
+                    className="w-full text-xs rounded-xl outline-none py-2.5 px-3" style={inputSt} />
+                : <input readOnly value={department}
+                    className="w-full text-xs rounded-xl outline-none py-2.5 px-3" style={readSt} />}
+            </div>
+            <div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: tokens.textMuted(dark) }}>Location / Timezone</label>
+              {editing
+                ? <input value={location} onChange={e => setLocation(e.target.value)}
+                    className="w-full text-xs rounded-xl outline-none py-2.5 px-3" style={inputSt} />
+                : <input readOnly value={location}
+                    className="w-full text-xs rounded-xl outline-none py-2.5 px-3" style={readSt} />}
+            </div>
+            {editing && (
+              <div className="flex gap-2 pt-1">
+                <Btn variant="primary" size="sm" onClick={saveEdit}>Save</Btn>
+                <Btn variant="outline" size="sm" onClick={cancelEdit}>Cancel</Btn>
               </div>
-            ))}
+            )}
           </div>
         </GlassCard>
         <GlassCard dark={dark} className="p-5">
