@@ -489,7 +489,11 @@ const PageFilterBar = ({ config, dark = false, onFilter, onReset, onExport, agen
     return d
   })
   const [search, setSearch] = useState("")
-  const set   = (k, v) => setValues(p => ({ ...p, [k]: v }))
+  const set = (k, v) => {
+    const next = { ...values, [k]: v }
+    setValues(next)
+    onFilter?.({ ...next, search })
+  }
   const reset = () => {
     const d = {}
     config?.fields?.forEach(f => { if (f.defaultValue) d[f.key] = f.defaultValue })
