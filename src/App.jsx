@@ -89,57 +89,57 @@ const useChartData = () => {
   return { weeklyPerformance, monthlyKPI, emailsVsChats, csatTrend, qaTrend }
 }
 // ─────────────────────────────────────────────
-// LIVE DATA CONFIG
-// Paste your Google Sheets "Publish to web" CSV URL in sheetsUrl.
-// Example: "https://docs.google.com/spreadsheets/d/SHEET_ID/export?format=csv&gid=0"
-// Leave as "" to keep mock defaults when no filter is active.
+// LIVE API — Google Apps Script JSON endpoint
+// ← Paste your deployed Web App URL here after deploying the Apps Script
 // ─────────────────────────────────────────────
-const LIVE_DATA_CONFIG = {
-  sheetsUrl: "",
+const LIVE_API_URL = "https://script.google.com/macros/s/AKfycbweaIU0QI81Uk6H_T-Zwl-8DmkPk2EaBNkdP601uffYWmHW4bBh5RT_ea8SgTE7cpi6TQ/exec"
+
+/** Convert a 2-D sheet array (first row = headers) into plain objects */
+const sheetToObjects = (arr) => {
+  if (!Array.isArray(arr) || arr.length < 2) return []
+  const headers = arr[0]
+  return arr.slice(1).map(row =>
+    Object.fromEntries(headers.map((h, i) => [h, row[i] ?? ""]))
+  )
 }
+
 /**
- * Fetches live email records from Google Sheets CSV.
- * Returns { data: row[]|null, loaded: bool }
- *   null  → fetch failed or not configured → may fall back to mock
- *   []    → fetch succeeded but sheet empty → show 0, not mock
- *   [...] → live rows (each gets channel="email" by default per Rule 10)
+ * Convert csat.rating text → numeric (1–5 scale).
+ * Sheet uses: "great" = 5 | "okay" = 3 | "bad" = 1
  */
-const useLiveEmailData = () => {
-  const [data,   setData]   = useState(null)
-  const [loaded, setLoaded] = useState(false)
+const csatToNum = (val) => {
+  const v = (val ?? "").toString().trim().toLowerCase()
+  if (v === "great") return 5
+  if (v === "okay")  return 3
+  if (v === "bad")   return 1
+  const n = parseFloat(v)
+  return isNaN(n) ? 0 : n
+}
+
+const useLiveData = () => {
+  const [tickets, setTickets] = useState(null)
+  const [csat,    setCsat]    = useState(null)
+  const [agents,  setAgents]  = useState(null)
+  const [loaded,  setLoaded]  = useState(false)
+  const [error,   setError]   = useState(false)
   useEffect(() => {
-    if (!LIVE_DATA_CONFIG.sheetsUrl) { setLoaded(true); return }
-    fetch(LIVE_DATA_CONFIG.sheetsUrl)
-      .then(r => { if (!r.ok) throw new Error("fetch failed"); return r.text() })
-      .then(csv => {
-        const lines   = csv.trim().split("\n").filter(Boolean)
-        if (lines.length < 2) { setData([]); setLoaded(true); return }
-        const headers = lines[0].split(",").map(h => h.replace(/^"|"$/g, "").trim())
-        const rows    = lines.slice(1).map(line => {
-          const vals = line.split(",").map(v => v.replace(/^"|"$/g, "").trim())
-          const obj  = {}
-          headers.forEach((h, i) => { obj[h] = vals[i] ?? "" })
-          // Rule 10: Help Scout / email_tickets records default to email channel
-          if (!obj.channel && !obj.type) obj.channel = "email"
-          // Normalise agent name → "agent" key for applyFilters compatibility
-          if (!obj.agent) obj.agent = (
-            obj.agent_name || obj["Assignee"]   || obj["Rated users"] ||
-            obj["Rated user"] || obj.rated_user ||
-            obj.closed_by    || obj["Closed by"] || ""
-          ).trim()
-          // Normalise date → "date" key for applyFilters compatibility
-          if (!obj.date) obj.date = (
-            obj["Created at"] || obj.created_at ||
-            obj["Closed at"]  || obj.closed_at  || ""
-          ).trim()
-          return obj
-        })
-        setData(rows)
-        setLoaded(true)
+    fetch(LIVE_API_URL)
+      .then(r => r.json())
+      .then(json => {
+        const t = sheetToObjects(json.tickets ?? [])
+        const c = sheetToObjects(json.csat    ?? [])
+        const a = sheetToObjects(json.agents  ?? [])
+        if (import.meta.env.DEV) {
+          console.log("[CSPMS Live] tickets:", t.length, "| csat:", c.length, "| agents:", a.length)
+        }
+        setTickets(t); setCsat(c); setAgents(a); setLoaded(true)
       })
-      .catch(() => { setData(null); setLoaded(true) })
+      .catch(err => {
+        console.warn("[CSPMS Live] API failed — using mock data.", err)
+        setError(true); setLoaded(true)
+      })
   }, [])
-  return { data, loaded }
+  return { tickets, csat, agents, loaded, error }
 }
 const useTableData = () => {
   const recentActivities = [
@@ -1195,24 +1195,59 @@ const DashboardPage = ({ dark, currentUser }) => {
   const charts = useChartData()
   const tables = useTableData()
   const { agentLock, effectiveFilters, handleFilter, handleReset, filterData } = usePageFilters(currentUser)
-  const { data: liveEmailRows, loaded: liveLoaded } = useLiveEmailData()
-
+  const { tickets: liveTickets, csat: liveCsat, agents: liveAgents, loaded: liveLoaded, error: liveError } = useLiveData()
   const activeAgent = effectiveFilters.agent && effectiveFilters.agent !== "all" ? effectiveFilters.agent : null
   const activeCh    = effectiveFilters.channel && effectiveFilters.channel !== "all" ? effectiveFilters.channel : null
   const hasActiveFilter = !!(activeAgent || effectiveFilters.from || effectiveFilters.to || activeCh)
+  const liveAvailable = liveLoaded && !liveError && liveTickets !== null
+  const liveHasData   = liveAvailable && ((liveTickets?.length ?? 0) > 0 || (liveCsat?.length ?? 0) > 0)
 
-  // Live data state:
-  //   liveAvailable = API responded (even if empty row count) — do NOT mix mock in this case
-  //   liveHasData   = API responded with actual rows
-  const liveAvailable = liveLoaded && liveEmailRows !== null
-  const liveHasData   = liveAvailable && liveEmailRows.length > 0
+  // ── Build live activity rows from tickets (newest first) ──────────────
+  const liveActivities = liveHasData ? (liveTickets ?? []).map(t => ({
+    ...t,
+    agent:   t.agent_name  || t.agent || "",
+    action:  t.subject     || "Email ticket",
+    score:   t.customer_rating ? parseFloat(t.customer_rating) : null,
+    time:    t.date        || "",
+    status:  (t.status || "").toLowerCase() === "resolved" ? "success"
+           : (t.status || "").toLowerCase() === "pending"  ? "warning" : "info",
+    date:    safeDate(t.date) || "",
+    channel: "email",
+  })).reverse() : null
 
-  // Filtered mock table data — for activity / audit / task display only
-  const filtActivities  = filterData(tables.recentActivities)
+  // ── Build live leaderboard aggregated by agent ─────────────────────
+  const liveLeaderboard = liveHasData ? (() => {
+    const byAgent = {}
+    ;(liveTickets ?? []).forEach(t => {
+      const name = t.agent_name || t.agent || ""; if (!name) return
+      if (!byAgent[name]) byAgent[name] = { agent: name, emails: 0, csatSum: 0, csatCount: 0 }
+      byAgent[name].emails++
+      const r = parseFloat(t.customer_rating || "") || 0
+      if (r) { byAgent[name].csatSum += r; byAgent[name].csatCount++ }
+    })
+    ;(liveCsat ?? []).forEach(c => {
+      const name = c.agent_name || ""; if (!name) return
+      const r = csatToNum(c.rating); if (!r) return
+      if (!byAgent[name]) byAgent[name] = { agent: name, emails: 0, csatSum: 0, csatCount: 0 }
+      byAgent[name].csatSum += r; byAgent[name].csatCount++
+    })
+    return Object.values(byAgent)
+      .sort((a, b) => b.emails - a.emails || b.csatSum - a.csatSum)
+      .map((a, i) => ({
+        rank: i + 1, agent: a.agent, kpi: 0,
+        emails: a.emails, chats: 0,
+        csat: a.csatCount ? +(a.csatSum / a.csatCount).toFixed(1) : 0,
+        qa: 0, date: safeDate(new Date().toISOString()),
+      }))
+  })() : null
+
+  const filtActivities  = applyFilters(liveAvailable ? (liveActivities ?? []) : tables.recentActivities, effectiveFilters)
   const filtAudits      = filterData(tables.latestAudits)
   const filtTasks       = filterData(tables.pendingTasks)
-  // Leaderboard intentionally ignores channel filter (rankings are cross-channel)
-  const filtLeaderboard = applyFilters(tables.leaderboard, { ...effectiveFilters, channel: "all" })
+  const filtLeaderboard = applyFilters(
+    liveAvailable ? (liveLeaderboard ?? []) : tables.leaderboard,
+    { ...effectiveFilters, channel: "all" }
+  )
 
   const allTableEmpty = filtActivities.length === 0 && filtAudits.length === 0 && filtLeaderboard.length === 0 && filtTasks.length === 0
   const hasFilters    = Object.values(effectiveFilters).some(v => v && v !== "all" && v !== "")
@@ -1226,53 +1261,114 @@ const DashboardPage = ({ dark, currentUser }) => {
   const chatZero = { ...kpi.chats, value: 0, change: 0 }
   const activeKpi = (() => {
     try {
-    const zeros = {
-      overallKPI: { ...kpi.overallKPI, value: 0, change: 0 },
-      emails:     { ...kpi.emails,     value: 0, change: 0 },
-      chats:      chatZero,
-      csat:       { ...kpi.csat,       value: 0, change: 0 },
-      qa:         { ...kpi.qa,         value: 0, change: 0 },
-      attendance: { ...kpi.attendance, value: 0, change: 0 },
-    }
-
-    // Chat is never connected — always 0 regardless of other filters
-    if (activeCh === "chat") return zeros
-
-    // Live data is available — use it exclusively, never mix with mock
-    if (liveAvailable) {
-      if (!liveHasData) return zeros  // sheet responded but empty → show 0
-      const filtLive = applyFilters(liveEmailRows, {
-        from:  effectiveFilters.from,
-        to:    effectiveFilters.to,
-        agent: effectiveFilters.agent,
-      })
-      const n = filtLive.length
-      const fAvg = (fields) => {
-        for (const f of fields) {
-          const vals = filtLive.map(r => parseFloat(r[f] ?? "") || 0).filter(v => v > 0)
-          if (vals.length) return +(vals.reduce((s, v) => s + v, 0) / vals.length).toFixed(1)
-        }
-        return 0
-      }
-      const avgCsat = fAvg(["csat_score","csat","CSAT Score","CSAT","Rating"])
-      const avgQa   = fAvg(["qa_score","qa","QA Score","QA"])
-      return {
-        overallKPI: { ...kpi.overallKPI, value: avgQa || 0,   change: 0 },
-        emails:     { ...kpi.emails,     value: n,             change: 0 },
+      const zeros = {
+        overallKPI: { ...kpi.overallKPI, value: 0, change: 0 },
+        emails:     { ...kpi.emails,     value: 0, change: 0 },
         chats:      chatZero,
-        csat:       { ...kpi.csat,       value: avgCsat || 0, change: 0 },
-        qa:         { ...kpi.qa,         value: avgQa   || 0, change: 0 },
-        attendance: { ...kpi.attendance, value: 0,             change: 0 },
+        csat:       { ...kpi.csat,       value: 0, change: 0 },
+        qa:         { ...kpi.qa,         value: 0, change: 0 },
+        attendance: { ...kpi.attendance, value: 0, change: 0 },
       }
-    }
-
-    // Live not configured or fetch failed (liveEmailRows === null)
-    // → no filter active: show mock as display default
-    // → filter active: show zeros — never pollute filtered view with mock numbers
-    if (!hasActiveFilter) return { ...kpi, chats: chatZero }
-    return zeros
+      if (activeCh === "chat") return zeros
+      if (liveAvailable) {
+        if (!liveHasData) return zeros
+        const lf = { from: effectiveFilters.from, to: effectiveFilters.to, agent: effectiveFilters.agent }
+        const filtT = applyFilters(
+          (liveTickets ?? []).map(t => ({
+            ...t,
+            agent: t.agent_name || t.agent || "",
+            date:  safeDate(t.date) || "",
+          })),
+          lf
+        )
+        const filtC = applyFilters(
+          (liveCsat ?? []).map(c => ({
+            ...c,
+            agent:    c.agent_name || "",
+            date:     safeDate(c.date) || "",
+            _csatNum: csatToNum(c.rating),
+          })),
+          lf
+        )
+        const avgNum = (rows, ...fields) => {
+          for (const f of fields) {
+            const vals = rows.map(r => parseFloat(r[f] ?? "") || 0).filter(v => v > 0)
+            if (vals.length) return +(vals.reduce((s, v) => s + v, 0) / vals.length).toFixed(1)
+          }
+          return 0
+        }
+        const emailCount = filtT.length
+        const csatNums   = filtC.map(r => r._csatNum).filter(v => v > 0)
+        const avgCsat    = csatNums.length
+          ? +(csatNums.reduce((s, v) => s + v, 0) / csatNums.length).toFixed(2)
+          : avgNum(filtT, "customer_rating")
+        const avgQa = avgNum(filtC, "qa_score", "qa") || avgNum(filtT, "qa_score", "qa")
+        return {
+          overallKPI: { ...kpi.overallKPI, value: avgQa || avgCsat || 0, change: 0 },
+          emails:     { ...kpi.emails,     value: emailCount,             change: 0 },
+          chats:      chatZero,
+          csat:       { ...kpi.csat,       value: avgCsat || 0,           change: 0 },
+          qa:         { ...kpi.qa,         value: avgQa   || 0,           change: 0 },
+          attendance: { ...kpi.attendance, value: 0,                       change: 0 },
+        }
+      }
+      if (!hasActiveFilter) return { ...kpi, chats: chatZero }
+      return zeros
     } catch { return { ...kpi, chats: chatZero } }
   })()
+  // ── Live chart data computed from tickets + csat ─────────────────────
+  const activeCharts = (() => {
+    if (!liveHasData) return charts
+    try {
+      const DAYS   = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"]
+      const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+      const wMap = {}
+      DAYS.forEach(d => { wMap[d] = { day: d, emails: 0, chats: 0, qa: 0 } })
+      ;(liveTickets ?? []).forEach(t => {
+        const d = safeDate(t.date); if (!d) return
+        wMap[DAYS[new Date(d).getDay()]].emails++
+      })
+      const weeklyPerformance = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d => wMap[d])
+      const mKpi = {}
+      ;(liveCsat ?? []).forEach(c => {
+        const d = safeDate(c.date); if (!d) return
+        const m = MONTHS[new Date(d).getMonth()]
+        if (!mKpi[m]) mKpi[m] = { month: m, sum: 0, n: 0, target: 85 }
+        const r = csatToNum(c.rating)
+        if (r) { mKpi[m].sum += r; mKpi[m].n++ }
+      })
+      const monthlyKPI = Object.values(mKpi).map(m => ({
+        month: m.month, kpi: m.n ? +(m.sum / m.n * 20).toFixed(1) : 0, target: m.target,
+      }))
+      const wkMap = {}
+      ;(liveTickets ?? []).forEach(t => {
+        const d = safeDate(t.date); if (!d) return
+        const wk = "W" + Math.ceil(new Date(d).getDate() / 7)
+        if (!wkMap[wk]) wkMap[wk] = { week: wk, emails: 0, chats: 0 }
+        wkMap[wk].emails++
+      })
+      const emailsVsChats = Object.values(wkMap).slice(-4)
+      const csatM = {}
+      ;(liveCsat ?? []).forEach(c => {
+        const d = safeDate(c.date); if (!d) return
+        const m = MONTHS[new Date(d).getMonth()]
+        if (!csatM[m]) csatM[m] = { month: m, sum: 0, n: 0 }
+        const r = csatToNum(c.rating)
+        if (r) { csatM[m].sum += r; csatM[m].n++ }
+      })
+      const csatTrend = Object.values(csatM).map(m => ({
+        month: m.month, csat: m.n ? +(m.sum / m.n).toFixed(2) : 0,
+      }))
+      return {
+        weeklyPerformance: weeklyPerformance.length ? weeklyPerformance : charts.weeklyPerformance,
+        monthlyKPI:        monthlyKPI.length        ? monthlyKPI        : charts.monthlyKPI,
+        emailsVsChats:     emailsVsChats.length     ? emailsVsChats     : charts.emailsVsChats,
+        csatTrend:         csatTrend.length         ? csatTrend         : charts.csatTrend,
+        qaTrend:           charts.qaTrend,
+      }
+    } catch { return charts }
+  })()
+
   const cards = [
     { ...activeKpi.overallKPI, icon: Target,       color: "blue"    },
     { ...activeKpi.emails,     icon: Mail,          color: "cyan"    },
@@ -1281,41 +1377,49 @@ const DashboardPage = ({ dark, currentUser }) => {
     { ...activeKpi.qa,         icon: Shield,        color: "emerald" },
     { ...activeKpi.attendance, icon: UserCheck,     color: "rose"    },
   ]
-
+  const showCharts = !hasActiveFilter || !allTableEmpty
   return (
     <div>
       <PageHeader dark={dark} title="Dashboard"
         subtitle={`Welcome back, ${currentUser?.name ?? ""}! Here's your team's performance overview.`}
         actions={<Btn variant="primary" icon={Download} onClick={() => downloadCSV([...filtActivities, ...filtAudits], "dashboard.csv")}>Export</Btn>} />
-
-      <PageFilterBar config={FILTER_CONFIGS.dashboard} dark={dark} agentLock={agentLock}
+      <PageFilterBar
+        config={(() => {
+          if (!liveAvailable || !(liveAgents?.length > 0)) return FILTER_CONFIGS.dashboard
+          const agentOpts = [
+            { value: "all", label: "All Agents" },
+            ...(liveAgents ?? [])
+              .map(a => ({ value: agentSlug(a.name || ""), label: a.name || "" }))
+              .filter(o => o.value && o.value !== "all"),
+          ]
+          return {
+            ...FILTER_CONFIGS.dashboard,
+            fields: FILTER_CONFIGS.dashboard.fields.map(f =>
+              f.key === "agent" ? { ...f, options: agentOpts } : f
+            ),
+          }
+        })()}
+        dark={dark} agentLock={agentLock}
         onFilter={handleFilter} onReset={handleReset}
         onExport={() => downloadCSV([...filtActivities, ...filtAudits], "dashboard.csv")} />
-
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-5">
         {cards.map((c, i) => <KPICard key={i} {...c} dark={dark} />)}
       </div>
-
-      {/* Charts: show mock only when no filter is active and no live data is connected.
-          Hide (empty arrays) when any filter is active — avoids fake mock numbers appearing
-          alongside real 0 KPI cards. Real chart aggregation replaces this when sheetsUrl is set. */}
-      {(() => {
-        const showMock = !hasActiveFilter && !liveHasData
-        const wk = showMock ? charts.weeklyPerformance : []
-        const mk = showMock ? charts.monthlyKPI        : []
-        const ec = showMock ? charts.emailsVsChats     : []
-        const cs = showMock ? charts.csatTrend         : []
-        const qa = showMock ? charts.qaTrend           : []
-        return (
-          <>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-              <WeeklyPerfChart data={wk} dark={dark} />
-              <MonthlyKPIChart data={mk} dark={dark} />
-            </div>
-          </>
-        )
-      })()}
+      {/* Charts — live when API loaded, mock when no filter, hidden when filter + no live data */}
+      {showCharts && (
+        <>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+            <WeeklyPerfChart data={activeCharts.weeklyPerformance} dark={dark} />
+            <MonthlyKPIChart data={activeCharts.monthlyKPI}        dark={dark} />
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5">
+            <EmailsVsChatsChart data={activeCharts.emailsVsChats} dark={dark} />
+            <CSATTrendChart      data={activeCharts.csatTrend}     dark={dark} />
+            <QATrendChart        data={activeCharts.qaTrend}        dark={dark} />
+          </div>
+        </>
+      )}
       {hasFilters && allTableEmpty ? (
         <GlassCard dark={dark} className="p-5 mb-4">
           <EmptyState dark={dark} title="No records found for selected filters"
