@@ -1833,16 +1833,96 @@ const ReportsPage = ({ dark, currentUser }) => {
 // LEADERBOARD ——————————————————————————————————
 const LeaderboardPage = ({ dark, currentUser }) => {
   const { leaderboard } = useTableData()
-  const { agentLock, effectiveFilters, handleFilter, handleReset, filterData } = usePageFilters(currentUser)
-  const filtLeaderboard = filterData(leaderboard)
+  const { tickets: liveTickets, csat: liveCsat, loaded: liveLoaded, error: liveError } = useLiveData()
+  const { agentLock, effectiveFilters, handleFilter, handleReset } = usePageFilters(currentUser)
+
+  const liveAvailable = liveLoaded && !liveError && liveTickets !== null
+  const liveHasData   = liveAvailable && ((liveTickets?.length ?? 0) > 0 || (liveCsat?.length ?? 0) > 0)
+
+  // ── Compute leaderboard from filtered live data ──────────────────────
+  const computedLeaderboard = (() => {
+    // API failed → fall back to mock (apply basic name/search filter only)
+    if (!liveAvailable) {
+      return applyFilters(leaderboard, { ...effectiveFilters, channel: "all" })
+    }
+    // API responded but no data matching the current filters → empty (requirement 9)
+    if (!liveHasData) return []
+
+    const lf = {
+      from:  effectiveFilters.from,
+      to:    effectiveFilters.to,
+      agent: effectiveFilters.agent,
+    }
+
+    // Filter email_tickets by date + agent + channel
+    const filtT = applyFilters(
+      (liveTickets ?? []).map(t => ({
+        ...t,
+        agent:   t.agent_name || t.agent || "",
+        date:    safeDate(t.date) || "",
+        channel: t.channel || "email",
+      })),
+      { ...lf, channel: effectiveFilters.channel }
+    )
+
+    // Filter csat by date + agent only (csat has no channel column)
+    const filtC = applyFilters(
+      (liveCsat ?? []).map(c => ({
+        ...c,
+        agent:    c.agent_name || "",
+        date:     safeDate(c.date) || "",
+        _csatNum: csatToNum(c.rating),
+      })),
+      lf
+    )
+
+    // Aggregate by agent name
+    const byAgent = {}
+    filtT.forEach(t => {
+      const name = t.agent || ""; if (!name) return
+      if (!byAgent[name]) byAgent[name] = { agent: name, emails: 0, csatSum: 0, csatCount: 0 }
+      byAgent[name].emails++
+      // ticket-level customer_rating as CSAT fallback
+      const r = parseFloat(t.customer_rating || "") || 0
+      if (r) {
+        const rPct = r <= 5 ? r * 20 : r
+        byAgent[name].csatSum += rPct; byAgent[name].csatCount++
+      }
+    })
+    filtC.forEach(c => {
+      const name = c.agent || ""; if (!name) return
+      const r = c._csatNum; if (!r) return
+      if (!byAgent[name]) byAgent[name] = { agent: name, emails: 0, csatSum: 0, csatCount: 0 }
+      byAgent[name].csatSum += r; byAgent[name].csatCount++
+    })
+
+    // Build rows sorted by KPI desc → emails desc
+    let rows = Object.values(byAgent)
+      .map(a => {
+        const csat = a.csatCount ? +(a.csatSum / a.csatCount).toFixed(1) : 0
+        // KPI = CSAT % (best single signal available; QA/attendance not yet in sheet)
+        const kpi  = csat
+        return { agent: a.agent, emails: a.emails, chats: 0, csat, qa: 0, kpi,
+                 date: safeDate(new Date().toISOString()) }
+      })
+      .sort((a, b) => b.kpi - a.kpi || b.emails - a.emails)
+      .map((a, i) => ({ ...a, rank: i + 1 }))
+
+    // Apply search on aggregated result
+    const q = (effectiveFilters.search || "").trim().toLowerCase()
+    if (q) rows = rows.filter(r => r.agent.toLowerCase().includes(q))
+
+    return rows
+  })()
+
   const medals = ["🥇","🥈","🥉","4","5"]
   return (
     <div>
       <PageHeader dark={dark} title="Leaderboard" subtitle="Top performing agents ranked by overall KPI this month." />
       <PageFilterBar config={FILTER_CONFIGS.leaderboard} dark={dark} agentLock={agentLock}
         onFilter={handleFilter} onReset={handleReset}
-        onExport={() => downloadCSV(filtLeaderboard, "leaderboard.csv")} />
-      {filtLeaderboard.length === 0 ? (
+        onExport={() => downloadCSV(computedLeaderboard, "leaderboard.csv")} />
+      {computedLeaderboard.length === 0 ? (
         <GlassCard dark={dark} className="p-5 mb-4">
           <EmptyState dark={dark} title="No agents found for selected filters"
             description="Try adjusting your filters or clicking Reset."
@@ -1851,7 +1931,7 @@ const LeaderboardPage = ({ dark, currentUser }) => {
       ) : (<>
       {/* Top 3 Podium */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
-        {filtLeaderboard.slice(0,3).map((agent, i) => (
+        {computedLeaderboard.slice(0,3).map((agent, i) => (
           <GlassCard key={i} dark={dark} className="p-6 text-center"
             style={i === 0 ? { boxShadow: "0 0 0 2px #3B82F6, 0 8px 32px rgba(59,130,246,0.2)" } : {}}>
             <div className="text-3xl mb-3">{medals[i]}</div>
@@ -1881,7 +1961,7 @@ const LeaderboardPage = ({ dark, currentUser }) => {
               </tr>
             </thead>
             <tbody>
-              {filtLeaderboard.map((row, i) => (
+              {computedLeaderboard.map((row, i) => (
                 <tr key={row.rank} style={{ borderTop: `1px solid ${dark ? "rgba(255,255,255,0.05)" : "#f1f5f9"}` }}>
                   <td className="py-3 pr-4 text-lg">{medals[i]}</td>
                   <td className="py-3 pr-4">
