@@ -1220,17 +1220,40 @@ const DashboardPage = ({ dark, currentUser }) => {
   })).reverse() : null
 
   // ── Build live leaderboard aggregated by agent ─────────────────────
+  // ── Allowed agents for dashboard leaderboard (strict allowlist) ────
+  const DASHBOARD_ALLOWED_AGENTS = [
+    "Muhammad Junaid",
+    "Anum Aziz",
+    "Sufiyan Merchant",
+    "Adeel Hyder",
+  ]
+  // Normalize name fragments → canonical full name
+  const normAgentName = (raw) => {
+    const n = (raw ?? "").trim().toLowerCase()
+    if (n.includes("junaid") || n === "muhammad")  return "Muhammad Junaid"
+    if (n.includes("anum"))                        return "Anum Aziz"
+    if (n.includes("sufiyan"))                     return "Sufiyan Merchant"
+    if (n.includes("adeel"))                       return "Adeel Hyder"
+    return (raw ?? "").trim()  // not in allowlist — will be filtered out below
+  }
+
+  // ── Build live leaderboard aggregated by agent ─────────────────────
   const liveLeaderboard = liveHasData ? (() => {
     const byAgent = {}
     ;(liveTickets ?? []).forEach(t => {
-      const name = t.agent_name || t.agent || ""; if (!name) return
+      const name = normAgentName(t.agent_name || t.agent || "")
+      if (!DASHBOARD_ALLOWED_AGENTS.includes(name)) return   // ← strict filter
       if (!byAgent[name]) byAgent[name] = { agent: name, emails: 0, csatSum: 0, csatCount: 0 }
       byAgent[name].emails++
       const r = parseFloat(t.customer_rating || "") || 0
-      if (r) { byAgent[name].csatSum += r; byAgent[name].csatCount++ }
+      if (r) {
+        const rPct = r <= 5 ? r * 20 : r   // convert 1-5 scale to % if needed
+        byAgent[name].csatSum += rPct; byAgent[name].csatCount++
+      }
     })
     ;(liveCsat ?? []).forEach(c => {
-      const name = c.agent_name || ""; if (!name) return
+      const name = normAgentName(c.agent_name || "")
+      if (!DASHBOARD_ALLOWED_AGENTS.includes(name)) return   // ← strict filter
       const r = csatToNum(c.rating); if (!r) return
       if (!byAgent[name]) byAgent[name] = { agent: name, emails: 0, csatSum: 0, csatCount: 0 }
       byAgent[name].csatSum += r; byAgent[name].csatCount++
@@ -1247,7 +1270,7 @@ const DashboardPage = ({ dark, currentUser }) => {
 
   const filtActivities  = applyFilters(liveAvailable ? (liveActivities ?? []) : tables.recentActivities, effectiveFilters)
   const filtAudits      = filterData(tables.latestAudits)
-  const filtTasks       = filterData(tables.pendingTasks)
+  const filtTasks       = []  // No real task source yet — show empty state
   const filtLeaderboard = applyFilters(
     liveAvailable ? (liveLeaderboard ?? []) : tables.leaderboard,
     { ...effectiveFilters, channel: "all" }
