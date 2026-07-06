@@ -894,10 +894,10 @@ const LeaderboardTable = ({ data, dark, onViewAll }) => {
   )
 }
 
-const PendingTasksTable = ({ data, dark }) => (
+const PendingTasksTable = ({ data, dark, onViewAll }) => (
   <GlassCard dark={dark} className="p-5">
     <SectionHeader title="Pending Tasks" subtitle="Tasks requiring attention" dark={dark}
-      action={<button className="text-xs font-semibold" style={{ color: "#3B82F6" }}>View All →</button>} />
+      action={<button className="text-xs font-semibold" style={{ color: "#3B82F6" }} onClick={onViewAll}>View All →</button>} />
     {!data || data.length === 0 ? (
       <EmptyState dark={dark} title="No records found" description="No data matches the selected filters." />
     ) : (
@@ -1464,7 +1464,7 @@ const DashboardPage = ({ dark, currentUser, onNavigate }) => {
           {/* Tables row 2 */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <LeaderboardTable  data={filtLeaderboard} dark={dark} onViewAll={() => onNavigate?.("leaderboard")} />
-            <PendingTasksTable data={filtTasks}        dark={dark} />
+            <PendingTasksTable data={filtTasks} dark={dark} onViewAll={() => onNavigate?.("tasks")} />
           </div>
         </>
       )}
@@ -1530,8 +1530,10 @@ const PerformancePage = ({ dark, currentUser }) => {
 const QAPage = ({ dark, currentUser }) => {
   const { latestAudits } = useTableData()
   const { agentLock, effectiveFilters, handleFilter, handleReset, filterData } = usePageFilters(currentUser)
+  const qaFileRef  = useRef(null)
+  const [qaToast, setQaToast] = useState("")
 
- // No real QA audit data source connected yet — show zeros until one is wired up
+  // No real QA audit data source connected yet — show zeros until one is wired up
   const filtAudits = []
   const passCount  = 0
   const avgScore   = 0
@@ -1545,8 +1547,28 @@ const QAPage = ({ dark, currentUser }) => {
   ]
   return (
     <div>
+      {/* Hidden file input triggered by New Audit button */}
+      <input
+        ref={qaFileRef}
+        type="file"
+        accept=".csv,.xlsx,.xls,.pdf,.doc,.docx"
+        style={{ display: "none" }}
+        onChange={e => {
+          if (e.target.files?.[0]) {
+            setQaToast("QA audit file selected successfully.")
+            setTimeout(() => setQaToast(""), 4000)
+          }
+          e.target.value = ""  // reset so same file can be re-selected
+        }}
+      />
+      {qaToast && (
+        <div className="mb-3 px-4 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2"
+          style={{ background: "#d1fae5", color: "#065f46", border: "1px solid #6ee7b7" }}>
+          <CheckCircle size={14} />{qaToast}
+        </div>
+      )}
       <PageHeader dark={dark} title="QA Audits" subtitle="Quality assurance audit management and tracking."
-        actions={<Btn variant="primary" icon={Plus}>New Audit</Btn>} />
+        actions={<Btn variant="primary" icon={Plus} onClick={() => qaFileRef.current?.click()}>New Audit</Btn>} />
       <PageFilterBar config={FILTER_CONFIGS["qa-audits"]} dark={dark} agentLock={agentLock}
         onFilter={handleFilter} onReset={handleReset}
         onExport={() => downloadCSV(filtAudits, "qa-audits.csv")} />
@@ -1744,7 +1766,7 @@ const TasksPage = ({ dark, currentUser }) => {
   const { pendingTasks } = useTableData()
   const { agentLock, effectiveFilters, handleFilter, handleReset, filterData } = usePageFilters(currentUser)
 
-  const allFiltered = filterData(pendingTasks)
+  const allFiltered = []  // No real task data source yet — columns show empty state
   const byStatus = (s) => allFiltered.filter(t => t.status === s)
 
   const cols = [
