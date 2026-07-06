@@ -226,7 +226,7 @@ const FC_ATTEND = [
   { value:"late",label:"Late" },{ value:"absent",label:"Absent" },
 ]
 const FILTER_CONFIGS = {
-  dashboard:   { showExport:true,  exportLabel:"Export Report",    fields:[{ key:"from",label:"From",type:"daterange" },{ key:"to",label:"To",type:"daterange" },{ key:"agent",label:"Agent",type:"select",options:FC_AGENTS,defaultValue:"all" },{ key:"channel",label:"Channel",type:"channel" }] },
+  dashboard:   { showExport:true,  exportLabel:"Export Report", hideSearch:true, fields:[{ key:"from",label:"From",type:"daterange" },{ key:"to",label:"To",type:"daterange" },{ key:"agent",label:"Agent",type:"select",options:FC_AGENTS,defaultValue:"all" },{ key:"channel",label:"Channel",type:"channel" }] },
   performance: { showExport:true,  exportLabel:"Export",           fields:[{ key:"from",label:"From",type:"daterange" },{ key:"to",label:"To",type:"daterange" },{ key:"agent",label:"Agent",type:"select",options:FC_AGENTS,defaultValue:"all" },{ key:"channel",label:"Channel",type:"channel" }] },
   "qa-audits": { showExport:true,  exportLabel:"Export Audits",    fields:[{ key:"from",label:"From",type:"daterange" },{ key:"to",label:"To",type:"daterange" },{ key:"agent",label:"Agent",type:"select",options:FC_AGENTS,defaultValue:"all" },{ key:"channel",label:"Channel",type:"channel" },{ key:"status",label:"Status",type:"select",options:FC_STATUS,defaultValue:"all" }] },
   attendance:  { showExport:true,  exportLabel:"Export Attendance",fields:[{ key:"from",label:"From",type:"daterange" },{ key:"to",label:"To",type:"daterange" },{ key:"agent",label:"Agent",type:"select",options:FC_AGENTS,defaultValue:"all" },{ key:"status",label:"Status",type:"select",options:FC_ATTEND,defaultValue:"all" }] },
@@ -628,14 +628,16 @@ const PageFilterBar = ({ config, dark = false, onFilter, onReset, onExport, agen
     <div className="rounded-2xl px-4 py-3 mb-5" style={glass}>
       <div className="flex flex-wrap items-end gap-3">
         {config?.fields?.map(renderField)}
-        <div>
-          <label className="block text-xs font-semibold mb-1.5" style={{ color: lc }}>Search</label>
-          <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && onFilter?.({ ...values, search })}
-            placeholder="Search records..."
-            className="text-xs rounded-xl outline-none py-2 px-3"
-            style={{ ...inp, minWidth: 160 }} />
-        </div>
+        {!config?.hideSearch && (
+          <div>
+            <label className="block text-xs font-semibold mb-1.5" style={{ color: lc }}>Search</label>
+            <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && onFilter?.({ ...values, search })}
+              placeholder="Search records..."
+              className="text-xs rounded-xl outline-none py-2 px-3"
+              style={{ ...inp, minWidth: 160 }} />
+          </div>
+        )}
         <div className="flex items-center gap-2 pb-0.5">
           <button onClick={() => onFilter?.({ ...values, search })}
             style={{ background:"linear-gradient(135deg,#3B82F6,#2563EB)", color:"#fff", boxShadow:"0 4px 12px rgba(59,130,246,0.35)" }}
@@ -861,12 +863,12 @@ const LatestAuditsTable = ({ data, dark }) => (
   </GlassCard>
 )
 
-const LeaderboardTable = ({ data, dark }) => {
+const LeaderboardTable = ({ data, dark, onViewAll }) => {
   const medals = ["🥇","🥈","🥉","4","5"]
   return (
     <GlassCard dark={dark} className="p-5">
       <SectionHeader title="Leaderboard" subtitle="Top performers this month" dark={dark}
-        action={<button className="text-xs font-semibold" style={{ color: "#3B82F6" }}>Full View →</button>} />
+        action={<button className="text-xs font-semibold" style={{ color: "#3B82F6" }} onClick={onViewAll}>Full View →</button>} />
       {!data || data.length === 0 ? (
         <EmptyState dark={dark} title="No records found" description="No data matches the selected filters." />
       ) : (
@@ -1194,7 +1196,7 @@ const AppLayout = ({ dark, setDark, page, setPage, currentUser, onLogout, childr
 // ─────────────────────────────────────────────
 
 // DASHBOARD ————————————————————————————————————
-const DashboardPage = ({ dark, currentUser }) => {
+const DashboardPage = ({ dark, currentUser, onNavigate }) => {
   const kpi    = useKPIData()
   const charts = useChartData()
   const tables = useTableData()
@@ -1461,7 +1463,7 @@ const DashboardPage = ({ dark, currentUser }) => {
 
           {/* Tables row 2 */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <LeaderboardTable  data={filtLeaderboard} dark={dark} />
+            <LeaderboardTable  data={filtLeaderboard} dark={dark} onViewAll={() => onNavigate?.("leaderboard")} />
             <PendingTasksTable data={filtTasks}        dark={dark} />
           </div>
         </>
@@ -3007,7 +3009,7 @@ export default function App() {
   return (
     <AppLayout dark={dark} setDark={setDark} page={page} setPage={navigateTo}
       currentUser={currentUser} onLogout={handleLogout}>
-      {page === "dashboard"   && <DashboardPage   dark={dark} currentUser={currentUser} />}
+      {page === "dashboard"   && <DashboardPage   dark={dark} currentUser={currentUser} onNavigate={navigateTo} />}
       {page === "performance" && <PerformancePage  dark={dark} currentUser={currentUser} />}
       {page === "qa-audits"   && <QAPage           dark={dark} currentUser={currentUser} />}
       {page === "attendance"  && <AttendancePage   dark={dark} currentUser={currentUser} />}
