@@ -104,19 +104,34 @@ const sheetToObjects = (arr) => {
 }
 
 /**
- * Convert csat.rating text → numeric (1–5 scale).
- * Sheet uses: "great" = 5 | "okay" = 3 | "bad" = 1
+ * Help Scout CSAT formula: CSAT% = (Great ÷ Total Ratings) × 100
+ * Total = Great + Okay + Bad  (only rated responses count)
+ *
+ * csatIsGreat  — true if the rating is "Great"
+ * csatIsValid  — true if it is any recognised response (Great / Okay / Bad / numeric)
+ * csatCompute  — given an array of raw rating strings → returns CSAT %
+ * csatToNum    — legacy shim: 1 if valid, 0 if not (used as a truthy gate)
  */
-const csatToNum = (val) => {
+const csatIsGreat = (val) => {
   const v = (val ?? "").toString().trim().toLowerCase()
-  if (v === "great") return 100
-  if (v === "okay")  return 60
-  if (v === "bad")   return 20
+  if (v === "great") return true
   const n = parseFloat(v)
-  if (isNaN(n) || n === 0) return 0
-  // Numeric 1–5 scale → percentage; pass through if already ≥ 10 (already a %)
-  return n <= 5 ? Math.round(n * 20) : n
+  // Numeric: treat ≥ 4/5 (≥ 80%) as "great"
+  if (!isNaN(n) && n > 0) return (n <= 5 ? Math.round(n * 20) : n) >= 80
+  return false
 }
+const csatIsValid = (val) => {
+  const v = (val ?? "").toString().trim().toLowerCase()
+  if (v === "great" || v === "okay" || v === "bad") return true
+  const n = parseFloat(v)
+  return !isNaN(n) && n > 0
+}
+const csatCompute = (ratings) => {
+  const valid = ratings.filter(csatIsValid)
+  if (!valid.length) return 0
+  return +(valid.filter(csatIsGreat).length / valid.length * 100).toFixed(1)
+}
+const csatToNum = (val) => csatIsValid(val) ? 1 : 0
 
 const useLiveData = () => {
   const [tickets, setTickets] = useState(null)
@@ -1244,28 +1259,29 @@ const DashboardPage = ({ dark, currentUser, onNavigate }) => {
     const byAgent = {}
     ;(liveTickets ?? []).forEach(t => {
       const name = normAgentName(t.agent_name || t.agent || "")
-      if (!DASHBOARD_ALLOWED_AGENTS.includes(name)) return   // ← strict filter
-      if (!byAgent[name]) byAgent[name] = { agent: name, emails: 0, csatSum: 0, csatCount: 0 }
+      if (!DASHBOARD_ALLOWED_AGENTS.includes(name)) return
+      if (!byAgent[name]) byAgent[name] = { agent: name, emails: 0, csatGreat: 0, csatTotal: 0 }
       byAgent[name].emails++
-      const r = parseFloat(t.customer_rating || "") || 0
-      if (r) {
-        const rPct = r <= 5 ? r * 20 : r   // convert 1-5 scale to % if needed
-        byAgent[name].csatSum += rPct; byAgent[name].csatCount++
+      const raw = (t.customer_rating || "").toString()
+      if (csatIsValid(raw)) {
+        byAgent[name].csatTotal++
+        if (csatIsGreat(raw)) byAgent[name].csatGreat++
       }
     })
     ;(liveCsat ?? []).forEach(c => {
       const name = normAgentName(c.agent_name || "")
-      if (!DASHBOARD_ALLOWED_AGENTS.includes(name)) return   // ← strict filter
-      const r = csatToNum(c.rating); if (!r) return
-      if (!byAgent[name]) byAgent[name] = { agent: name, emails: 0, csatSum: 0, csatCount: 0 }
-      byAgent[name].csatSum += r; byAgent[name].csatCount++
+      if (!DASHBOARD_ALLOWED_AGENTS.includes(name)) return
+      if (!csatIsValid(c.rating)) return
+      if (!byAgent[name]) byAgent[name] = { agent: name, emails: 0, csatGreat: 0, csatTotal: 0 }
+      byAgent[name].csatTotal++
+      if (csatIsGreat(c.rating)) byAgent[name].csatGreat++
     })
     return Object.values(byAgent)
-      .sort((a, b) => b.emails - a.emails || b.csatSum - a.csatSum)
+      .sort((a, b) => b.emails - a.emails || b.csatGreat - a.csatGreat)
       .map((a, i) => ({
         rank: i + 1, agent: a.agent, kpi: 0,
         emails: a.emails, chats: 0,
-        csat: a.csatCount ? +(a.csatSum / a.csatCount).toFixed(1) : 0,
+        csat: a.csatTotal ? +(a.csatGreat / a.csatTotal * 100).toFixed(1) : 0,
         qa: 0, date: safeDate(new Date().toISOString()),
       }))
   })() : null
@@ -1310,12 +1326,11 @@ const DashboardPage = ({ dark, currentUser, onNavigate }) => {
           })),
           lf
         )
-        const filtC = applyFilters(
+       const filtC = applyFilters(
           (liveCsat ?? []).map(c => ({
             ...c,
-            agent:    c.agent_name || "",
-            date:     safeDate(c.date) || "",
-            _csatNum: csatToNum(c.rating),
+            agent: c.agent_name || "",
+            date:  safeDate(c.date) || "",
           })),
           lf
         )
@@ -1327,13 +1342,11 @@ const DashboardPage = ({ dark, currentUser, onNavigate }) => {
           return 0
         }
         const emailCount = filtT.length
-        const csatNums     = filtC.map(r => r._csatNum).filter(v => v > 0)
-        const rawRating    = avgNum(filtT, "customer_rating")
-        const avgCsat      = csatNums.length
-          ? +(csatNums.reduce((s, v) => s + v, 0) / csatNums.length).toFixed(1)
-          : rawRating > 0 && rawRating <= 5
-            ? +(rawRating * 20).toFixed(1)   // 1–5 scale → percentage
-            : rawRating                       // already a percentage or 0
+        // Help Scout CSAT: (Great ÷ Total) × 100
+        const avgCsat = csatCompute([
+          ...filtC.map(r => r.rating),
+          ...filtT.map(t => (t.customer_rating || "").toString()),
+        ])
         const avgQa = avgNum(filtC, "qa_score", "qa") || avgNum(filtT, "qa_score", "qa")
         return {
           overallKPI: { ...kpi.overallKPI, value: avgQa || avgCsat || 0, change: 0 },
@@ -1369,13 +1382,14 @@ const DashboardPage = ({ dark, currentUser, onNavigate }) => {
       const mKpi = {}
       ;(liveCsat ?? []).forEach(c => {
         const d = safeDate(c.date); if (!d) return
+        if (!csatIsValid(c.rating)) return
         const m = MONTHS[new Date(d).getMonth()]
-        if (!mKpi[m]) mKpi[m] = { month: m, sum: 0, n: 0, target: 85 }
-        const r = csatToNum(c.rating)
-        if (r) { mKpi[m].sum += r; mKpi[m].n++ }
+        if (!mKpi[m]) mKpi[m] = { month: m, great: 0, total: 0, target: 85 }
+        mKpi[m].total++
+        if (csatIsGreat(c.rating)) mKpi[m].great++
       })
       const monthlyKPI = Object.values(mKpi).map(m => ({
-        month: m.month, kpi: m.n ? +(m.sum / m.n).toFixed(1) : 0, target: m.target,
+        month: m.month, kpi: m.total ? +(m.great / m.total * 100).toFixed(1) : 0, target: m.target,
       }))
       const wkMap = {}
       ;(liveTickets ?? []).forEach(t => {
@@ -1388,13 +1402,14 @@ const DashboardPage = ({ dark, currentUser, onNavigate }) => {
       const csatM = {}
       ;(liveCsat ?? []).forEach(c => {
         const d = safeDate(c.date); if (!d) return
+        if (!csatIsValid(c.rating)) return
         const m = MONTHS[new Date(d).getMonth()]
-        if (!csatM[m]) csatM[m] = { month: m, sum: 0, n: 0 }
-        const r = csatToNum(c.rating)
-        if (r) { csatM[m].sum += r; csatM[m].n++ }
+        if (!csatM[m]) csatM[m] = { month: m, great: 0, total: 0 }
+        csatM[m].total++
+        if (csatIsGreat(c.rating)) csatM[m].great++
       })
       const csatTrend = Object.values(csatM).map(m => ({
-        month: m.month, csat: m.n ? +(m.sum / m.n).toFixed(2) : 0,
+        month: m.month, csat: m.total ? +(m.great / m.total * 100).toFixed(1) : 0,
       }))
       return {
         weeklyPerformance: weeklyPerformance.length ? weeklyPerformance : charts.weeklyPerformance,
@@ -1938,37 +1953,36 @@ const LeaderboardPage = ({ dark, currentUser }) => {
     const filtC = applyFilters(
       (liveCsat ?? []).map(c => ({
         ...c,
-        agent:    c.agent_name || "",
-        date:     safeDate(c.date) || "",
-        _csatNum: csatToNum(c.rating),
+        agent: c.agent_name || "",
+        date:  safeDate(c.date) || "",
       })),
       lf
     )
 
-    // Aggregate by agent name
+    // Aggregate by agent name — Help Scout CSAT: (Great ÷ Total) × 100
     const byAgent = {}
     filtT.forEach(t => {
       const name = t.agent || ""; if (!name) return
-      if (!byAgent[name]) byAgent[name] = { agent: name, emails: 0, csatSum: 0, csatCount: 0 }
+      if (!byAgent[name]) byAgent[name] = { agent: name, emails: 0, csatGreat: 0, csatTotal: 0 }
       byAgent[name].emails++
-      // ticket-level customer_rating as CSAT fallback
-      const r = parseFloat(t.customer_rating || "") || 0
-      if (r) {
-        const rPct = r <= 5 ? r * 20 : r
-        byAgent[name].csatSum += rPct; byAgent[name].csatCount++
+      const raw = (t.customer_rating || "").toString()
+      if (csatIsValid(raw)) {
+        byAgent[name].csatTotal++
+        if (csatIsGreat(raw)) byAgent[name].csatGreat++
       }
     })
     filtC.forEach(c => {
       const name = c.agent || ""; if (!name) return
-      const r = c._csatNum; if (!r) return
-      if (!byAgent[name]) byAgent[name] = { agent: name, emails: 0, csatSum: 0, csatCount: 0 }
-      byAgent[name].csatSum += r; byAgent[name].csatCount++
+      if (!csatIsValid(c.rating)) return
+      if (!byAgent[name]) byAgent[name] = { agent: name, emails: 0, csatGreat: 0, csatTotal: 0 }
+      byAgent[name].csatTotal++
+      if (csatIsGreat(c.rating)) byAgent[name].csatGreat++
     })
 
     // Build rows sorted by KPI desc → emails desc
     let rows = Object.values(byAgent)
       .map(a => {
-        const csat = a.csatCount ? +(a.csatSum / a.csatCount).toFixed(1) : 0
+        const csat = a.csatTotal ? +(a.csatGreat / a.csatTotal * 100).toFixed(1) : 0
         // KPI = CSAT % (best single signal available; QA/attendance not yet in sheet)
         const kpi  = csat
         return { agent: a.agent, emails: a.emails, chats: 0, csat, qa: 0, kpi,
