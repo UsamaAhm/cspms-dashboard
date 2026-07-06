@@ -1344,9 +1344,14 @@ const DashboardPage = ({ dark, currentUser, onNavigate }) => {
           attendance: { ...kpi.attendance, value: 0,                       change: 0 },
         }
       }
+      // Still loading — never show mock while the API call is in-flight
+      if (!liveLoaded) return zeros
+      // API failed — fall back to mock; show zeros when a filter is active
       if (!hasActiveFilter) return { ...kpi, chats: chatZero }
       return zeros
-    } catch { return { ...kpi, chats: chatZero } }
+    } catch {
+      return { ...kpi, chats: chatZero }
+    }
   })()
   // ── Live chart data computed from tickets + csat ─────────────────────
   const activeCharts = (() => {
