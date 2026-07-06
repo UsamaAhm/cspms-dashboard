@@ -284,6 +284,13 @@ const safeDate = (val) => {
   const d = new Date(t)
   return isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10)
 }
+/** Today as YYYY-MM-DD */
+const todayISO = () => safeDate(new Date().toISOString())
+/** First day of the current calendar month as YYYY-MM-DD */
+const monthStartISO = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`
+}
 
 const applyFilters = (items, filters) => {
   if (!Array.isArray(items)) return []
@@ -387,6 +394,22 @@ const AGENT_KPI_MOCK = {
     qa:         { label:"QA Score",     value:"80",   unit:"%", change: -4   },
     attendance: { label:"Attendance",   value:"88",   unit:"%", change: -4   },
   },
+}
+
+// ── Module-level agent allowlist + name normalizer (shared by Dashboard & Leaderboard) ──
+const DASHBOARD_ALLOWED_AGENTS = [
+  "Muhammad Junaid",
+  "Anum Aziz",
+  "Sufiyan Merchant",
+  "Adeel Hyder",
+]
+const normAgentName = (raw) => {
+  const n = (raw ?? "").trim().toLowerCase()
+  if (n.includes("junaid") || n === "muhammad")  return "Muhammad Junaid"
+  if (n.includes("anum"))                        return "Anum Aziz"
+  if (n.includes("sufiyan"))                     return "Sufiyan Merchant"
+  if (n.includes("adeel"))                       return "Adeel Hyder"
+  return (raw ?? "").trim()
 }
 
 // ─────────────────────────────────────────────
@@ -1236,62 +1259,55 @@ const DashboardPage = ({ dark, currentUser, onNavigate }) => {
     channel: "email",
   })).reverse() : null
 
-  // ── Build live leaderboard aggregated by agent ─────────────────────
-  // ── Allowed agents for dashboard leaderboard (strict allowlist) ────
-  const DASHBOARD_ALLOWED_AGENTS = [
-    "Muhammad Junaid",
-    "Anum Aziz",
-    "Sufiyan Merchant",
-    "Adeel Hyder",
-  ]
-  // Normalize name fragments → canonical full name
-  const normAgentName = (raw) => {
-    const n = (raw ?? "").trim().toLowerCase()
-    if (n.includes("junaid") || n === "muhammad")  return "Muhammad Junaid"
-    if (n.includes("anum"))                        return "Anum Aziz"
-    if (n.includes("sufiyan"))                     return "Sufiyan Merchant"
-    if (n.includes("adeel"))                       return "Adeel Hyder"
-    return (raw ?? "").trim()  // not in allowlist — will be filtered out below
-  }
-
-  // ── Build live leaderboard aggregated by agent ─────────────────────
-  const liveLeaderboard = liveHasData ? (() => {
+  // ── Build live leaderboard (current month, 4 allowed agents) ────────
+  const liveLeaderboard = (() => {
+    // Date range: dashboard filter if set, otherwise current month → today
+    const lbFrom = effectiveFilters.from || monthStartISO()
+    const lbTo   = effectiveFilters.to   || todayISO()
+    // Seed all 4 agents with zeros so they always appear
     const byAgent = {}
-    ;(liveTickets ?? []).forEach(t => {
-      const name = normAgentName(t.agent_name || t.agent || "")
-      if (!DASHBOARD_ALLOWED_AGENTS.includes(name)) return
-      if (!byAgent[name]) byAgent[name] = { agent: name, emails: 0, csatGreat: 0, csatTotal: 0 }
-      byAgent[name].emails++
-      const raw = (t.customer_rating || "").toString()
-      if (csatIsValid(raw)) {
+    DASHBOARD_ALLOWED_AGENTS.forEach(name => {
+      byAgent[name] = { agent: name, emails: 0, csatGreat: 0, csatTotal: 0 }
+    })
+    if (liveAvailable) {
+      ;(liveTickets ?? []).forEach(t => {
+        const name = normAgentName(t.agent_name || t.agent || "")
+        if (!DASHBOARD_ALLOWED_AGENTS.includes(name)) return
+        const d = safeDate(t.date || t.created_at || "")
+        if (d && (d < lbFrom || d > lbTo)) return
+        byAgent[name].emails++
+        const raw = (t.customer_rating || "").toString()
+        if (csatIsValid(raw)) {
+          byAgent[name].csatTotal++
+          if (csatIsGreat(raw)) byAgent[name].csatGreat++
+        }
+      })
+      ;(liveCsat ?? []).forEach(c => {
+        const name = normAgentName(c.agent_name || "")
+        if (!DASHBOARD_ALLOWED_AGENTS.includes(name)) return
+        if (!csatIsValid(c.rating)) return
+        const d = safeDate(c.date || c.created_at || "")
+        if (d && (d < lbFrom || d > lbTo)) return
         byAgent[name].csatTotal++
-        if (csatIsGreat(raw)) byAgent[name].csatGreat++
-      }
-    })
-    ;(liveCsat ?? []).forEach(c => {
-      const name = normAgentName(c.agent_name || "")
-      if (!DASHBOARD_ALLOWED_AGENTS.includes(name)) return
-      if (!csatIsValid(c.rating)) return
-      if (!byAgent[name]) byAgent[name] = { agent: name, emails: 0, csatGreat: 0, csatTotal: 0 }
-      byAgent[name].csatTotal++
-      if (csatIsGreat(c.rating)) byAgent[name].csatGreat++
-    })
+        if (csatIsGreat(c.rating)) byAgent[name].csatGreat++
+      })
+    }
     return Object.values(byAgent)
       .sort((a, b) => b.emails - a.emails || b.csatGreat - a.csatGreat)
       .map((a, i) => ({
         rank: i + 1, agent: a.agent, kpi: 0,
         emails: a.emails, chats: 0,
         csat: a.csatTotal ? +(a.csatGreat / a.csatTotal * 100).toFixed(1) : 0,
-        qa: 0, date: safeDate(new Date().toISOString()),
+        qa: 0, date: todayISO(),
       }))
-  })() : null
+  })()
 
   const filtActivities  = applyFilters(liveAvailable ? (liveActivities ?? []) : tables.recentActivities, effectiveFilters)
   const filtAudits      = filterData(tables.latestAudits)
   const filtTasks       = []  // No real task source yet — show empty state
-  const filtLeaderboard = applyFilters(
-    liveAvailable ? (liveLeaderboard ?? []) : tables.leaderboard,
-    { ...effectiveFilters, channel: "all" }
+  // liveLeaderboard always returns an array (4 agents); dates already baked in — only apply agent filter here
+  const filtLeaderboard = liveLeaderboard.filter(row =>
+    !effectiveFilters.agent || effectiveFilters.agent === "all" || row.agent === effectiveFilters.agent
   )
 
   const allTableEmpty = filtLeaderboard.length === 0 && filtTasks.length === 0
@@ -1930,83 +1946,68 @@ const LeaderboardPage = ({ dark, currentUser }) => {
   const { agentLock, effectiveFilters, handleFilter, handleReset } = usePageFilters(currentUser)
 
   const liveAvailable = liveLoaded && !liveError && liveTickets !== null
-  const liveHasData   = liveAvailable && ((liveTickets?.length ?? 0) > 0 || (liveCsat?.length ?? 0) > 0)
 
-  // ── Compute leaderboard from filtered live data ──────────────────────
+  // ── Compute leaderboard — current month default, 4 allowed agents, no mock ──
   const computedLeaderboard = (() => {
-    // API failed → fall back to mock (apply basic name/search filter only)
-    if (!liveAvailable) {
-      return applyFilters(leaderboard, { ...effectiveFilters, channel: "all" })
-    }
-    // API responded but no data matching the current filters → empty (requirement 9)
-    if (!liveHasData) return []
+    // Default date range: current month → today (user filter overrides)
+    const lbFrom = effectiveFilters.from || monthStartISO()
+    const lbTo   = effectiveFilters.to   || todayISO()
 
-    const lf = {
-      from:  effectiveFilters.from,
-      to:    effectiveFilters.to,
-      agent: effectiveFilters.agent,
-    }
-
-    // Filter email_tickets by date + agent + channel
-    const filtT = applyFilters(
-      (liveTickets ?? []).map(t => ({
-        ...t,
-        agent:   t.agent_name || t.agent || "",
-        date:    safeDate(t.date) || "",
-        channel: t.channel || "email",
-      })),
-      { ...lf, channel: effectiveFilters.channel }
-    )
-
-    // Filter csat by date + agent only (csat has no channel column)
-    const filtC = applyFilters(
-      (liveCsat ?? []).map(c => ({
-        ...c,
-        agent: c.agent_name || "",
-        date:  safeDate(c.date) || "",
-      })),
-      lf
-    )
-
-    // Aggregate by agent name — Help Scout CSAT: (Great ÷ Total) × 100
+    // Seed all 4 allowed agents with zeros so they always appear
     const byAgent = {}
-    filtT.forEach(t => {
-      const name = t.agent || ""; if (!name) return
-      if (!byAgent[name]) byAgent[name] = { agent: name, emails: 0, csatGreat: 0, csatTotal: 0 }
-      byAgent[name].emails++
-      const raw = (t.customer_rating || "").toString()
-      if (csatIsValid(raw)) {
-        byAgent[name].csatTotal++
-        if (csatIsGreat(raw)) byAgent[name].csatGreat++
-      }
-    })
-    filtC.forEach(c => {
-      const name = c.agent || ""; if (!name) return
-      if (!csatIsValid(c.rating)) return
-      if (!byAgent[name]) byAgent[name] = { agent: name, emails: 0, csatGreat: 0, csatTotal: 0 }
-      byAgent[name].csatTotal++
-      if (csatIsGreat(c.rating)) byAgent[name].csatGreat++
+    DASHBOARD_ALLOWED_AGENTS.forEach(name => {
+      byAgent[name] = { agent: name, emails: 0, csatGreat: 0, csatTotal: 0 }
     })
 
-    // Build rows sorted by KPI desc → emails desc
+    if (liveAvailable) {
+      ;(liveTickets ?? []).forEach(t => {
+        const name = normAgentName(t.agent_name || t.agent || "")
+        if (!DASHBOARD_ALLOWED_AGENTS.includes(name)) return
+        const d = safeDate(t.date || t.created_at || "")
+        if (d && (d < lbFrom || d > lbTo)) return
+        // channel filter
+        if (effectiveFilters.channel && effectiveFilters.channel !== "all") {
+          const ch = (t.channel || "email").toLowerCase()
+          if (ch !== effectiveFilters.channel.toLowerCase()) return
+        }
+        byAgent[name].emails++
+        const raw = (t.customer_rating || "").toString()
+        if (csatIsValid(raw)) {
+          byAgent[name].csatTotal++
+          if (csatIsGreat(raw)) byAgent[name].csatGreat++
+        }
+      })
+      ;(liveCsat ?? []).forEach(c => {
+        const name = normAgentName(c.agent_name || "")
+        if (!DASHBOARD_ALLOWED_AGENTS.includes(name)) return
+        if (!csatIsValid(c.rating)) return
+        const d = safeDate(c.date || c.created_at || "")
+        if (d && (d < lbFrom || d > lbTo)) return
+        byAgent[name].csatTotal++
+        if (csatIsGreat(c.rating)) byAgent[name].csatGreat++
+      })
+    }
+
+    // Build rows — CSAT = Help Scout formula: great ÷ total × 100
     let rows = Object.values(byAgent)
       .map(a => {
         const csat = a.csatTotal ? +(a.csatGreat / a.csatTotal * 100).toFixed(1) : 0
-        // KPI = CSAT % (best single signal available; QA/attendance not yet in sheet)
-        const kpi  = csat
-        return { agent: a.agent, emails: a.emails, chats: 0, csat, qa: 0, kpi,
-                 date: safeDate(new Date().toISOString()) }
+        return { agent: a.agent, emails: a.emails, chats: 0, csat, qa: 0, kpi: csat,
+                 date: todayISO() }
       })
       .sort((a, b) => b.kpi - a.kpi || b.emails - a.emails)
       .map((a, i) => ({ ...a, rank: i + 1 }))
 
-    // Apply search on aggregated result
+    // Agent filter
+    if (effectiveFilters.agent && effectiveFilters.agent !== "all") {
+      rows = rows.filter(r => r.agent === effectiveFilters.agent)
+    }
+    // Search filter
     const q = (effectiveFilters.search || "").trim().toLowerCase()
     if (q) rows = rows.filter(r => r.agent.toLowerCase().includes(q))
 
     return rows
   })()
-
   const medals = ["🥇","🥈","🥉","4","5"]
   return (
     <div>
