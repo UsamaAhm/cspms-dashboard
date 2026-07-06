@@ -848,7 +848,9 @@ const LatestAuditsTable = ({ data, dark }) => (
                   {row.score}%
                 </span>
               </td>
-              <td className="py-2.5 pr-4"><Badge label={row.status} variant={row.status.toLowerCase()} /></td>
+              <td className="py-2.5 pr-4"><Badge
+                label={row.status === "Pass" ? "Achieved" : row.status === "Fail" ? "Needs Attention" : row.status}
+                variant={row.status.toLowerCase()} /></td>
               <td className="py-2.5 text-xs" style={{ color: tokens.textMuted(dark) }}>{row.date}</td>
             </tr>
           ))}
@@ -1251,7 +1253,7 @@ const DashboardPage = ({ dark, currentUser }) => {
     { ...effectiveFilters, channel: "all" }
   )
 
-  const allTableEmpty = filtActivities.length === 0 && filtAudits.length === 0 && filtLeaderboard.length === 0 && filtTasks.length === 0
+  const allTableEmpty = filtLeaderboard.length === 0 && filtTasks.length === 0
   const hasFilters    = Object.values(effectiveFilters).some(v => v && v !== "all" && v !== "")
 
   // ── KPI card values ────────────────────────────────────────────────────────
@@ -1433,11 +1435,6 @@ const DashboardPage = ({ dark, currentUser }) => {
         </GlassCard>
       ) : (
         <>
-          {/* Tables row 1 */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-            <RecentActivitiesTable data={filtActivities} dark={dark} />
-            <LatestAuditsTable     data={filtAudits}     dark={dark} />
-          </div>
 
           {/* Tables row 2 */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
