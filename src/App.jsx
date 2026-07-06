@@ -1482,6 +1482,7 @@ const PerformancePage = ({ dark, currentUser }) => {
   const charts = useChartData()
   const kpi    = useKPIData()
   const { agentLock, effectiveFilters, handleFilter, handleReset } = usePageFilters(currentUser)
+  const { loaded: liveLoaded, error: liveError } = useLiveData()
 
   const activeAgent = effectiveFilters.agent && effectiveFilters.agent !== "all" ? effectiveFilters.agent : null
   const agentKpi    = activeAgent ? AGENT_KPI_MOCK[activeAgent] : null
@@ -1494,16 +1495,34 @@ const PerformancePage = ({ dark, currentUser }) => {
     chats:  activeCh === "email" ? 0 : row.chats,
   }))
 
+  // Loading → zeros; API failed → mock fallback; API ok → zeros (no live perf source yet)
+  const perfZeros = {
+    overallKPI: { ...kpi.overallKPI, value: 0, change: 0 },
+    emails:     { ...kpi.emails,     value: 0, change: 0 },
+    chats:      { ...kpi.chats,      value: 0, change: 0 },
+    csat:       { ...kpi.csat,       value: 0, change: 0 },
+    qa:         { ...kpi.qa,         value: 0, change: 0 },
+  }
+  const perfKpi = !liveLoaded
+    ? perfZeros
+    : liveError
+      ? { overallKPI: agentKpi?.overallKPI ?? kpi.overallKPI,
+          emails:     agentKpi?.emails     ?? kpi.emails,
+          chats:      agentKpi?.chats      ?? kpi.chats,
+          csat:       agentKpi?.csat       ?? kpi.csat,
+          qa:         agentKpi?.qa         ?? kpi.qa }
+      : perfZeros   // API ok — zeros (no separate live Performance source yet)
+
   // Second KPI card switches between Emails and Chats based on active channel
   const emailCard = activeCh === "chat"
-    ? { ...(agentKpi?.chats  ?? kpi.chats),  icon: MessageSquare, color: "purple" }
-    : { ...(agentKpi?.emails ?? kpi.emails), icon: Mail,          color: "cyan"   }
+    ? { ...perfKpi.chats,  icon: MessageSquare, color: "purple" }
+    : { ...perfKpi.emails, icon: Mail,          color: "cyan"   }
 
   const cards = [
-    { ...(agentKpi?.overallKPI ?? kpi.overallKPI), icon: Target, color: "blue"    },
+    { ...perfKpi.overallKPI, icon: Target, color: "blue"    },
     emailCard,
-    { ...(agentKpi?.csat       ?? kpi.csat),       icon: Star,   color: "amber"   },
-    { ...(agentKpi?.qa         ?? kpi.qa),         icon: Shield, color: "emerald" },
+    { ...perfKpi.csat,       icon: Star,   color: "amber"   },
+    { ...perfKpi.qa,         icon: Shield, color: "emerald" },
   ]
 
   return (
