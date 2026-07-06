@@ -242,7 +242,7 @@ const FC_ATTEND = [
 ]
 const FILTER_CONFIGS = {
   dashboard:   { showExport:true,  exportLabel:"Export Report", hideSearch:true, fields:[{ key:"from",label:"From",type:"daterange" },{ key:"to",label:"To",type:"daterange" },{ key:"agent",label:"Agent",type:"select",options:FC_AGENTS,defaultValue:"all" },{ key:"channel",label:"Channel",type:"channel" }] },
-  performance: { showExport:true,  exportLabel:"Export",           fields:[{ key:"from",label:"From",type:"daterange" },{ key:"to",label:"To",type:"daterange" },{ key:"agent",label:"Agent",type:"select",options:FC_AGENTS,defaultValue:"all" },{ key:"channel",label:"Channel",type:"channel" }] },
+  performance: { showExport:true,  exportLabel:"Export", hideSearch:true, fields:[{ key:"from",label:"From",type:"daterange" },{ key:"to",label:"To",type:"daterange" },{ key:"agent",label:"Agent",type:"select",options:FC_AGENTS,defaultValue:"all" },{ key:"channel",label:"Channel",type:"channel" }] },
   "qa-audits": { showExport:true,  exportLabel:"Export Audits",    fields:[{ key:"from",label:"From",type:"daterange" },{ key:"to",label:"To",type:"daterange" },{ key:"agent",label:"Agent",type:"select",options:FC_AGENTS,defaultValue:"all" },{ key:"channel",label:"Channel",type:"channel" },{ key:"status",label:"Status",type:"select",options:FC_STATUS,defaultValue:"all" }] },
   attendance:  { showExport:true,  exportLabel:"Export Attendance",fields:[{ key:"from",label:"From",type:"daterange" },{ key:"to",label:"To",type:"daterange" },{ key:"agent",label:"Agent",type:"select",options:FC_AGENTS,defaultValue:"all" },{ key:"status",label:"Status",type:"select",options:FC_ATTEND,defaultValue:"all" }] },
   tasks:       { showExport:false, exportLabel:"",                 fields:[{ key:"from",label:"From",type:"daterange" },{ key:"to",label:"To",type:"daterange" },{ key:"agent",label:"Assignee",type:"select",options:FC_AGENTS,defaultValue:"all" },{ key:"status",label:"Status",type:"select",options:FC_TASK_STATUS,defaultValue:"all" },{ key:"priority",label:"Priority",type:"select",options:FC_PRIORITY,defaultValue:"all" }] },
@@ -1495,50 +1495,60 @@ const DashboardPage = ({ dark, currentUser, onNavigate }) => {
 // PERFORMANCE ——————————————————————————————————
 const PerformancePage = ({ dark, currentUser }) => {
   const charts = useChartData()
-  const kpi    = useKPIData()
   const { agentLock, effectiveFilters, handleFilter, handleReset } = usePageFilters(currentUser)
-  const { loaded: liveLoaded, error: liveError } = useLiveData()
+  const { tickets: liveTickets, csat: liveCsat, loaded: liveLoaded, error: liveError } = useLiveData()
 
-  const activeAgent = effectiveFilters.agent && effectiveFilters.agent !== "all" ? effectiveFilters.agent : null
-  const agentKpi    = activeAgent ? AGENT_KPI_MOCK[activeAgent] : null
-  const activeCh    = effectiveFilters.channel && effectiveFilters.channel !== "all" ? effectiveFilters.channel : null
+  const liveAvailable = liveLoaded && !liveError && liveTickets !== null
+  const activeCh      = effectiveFilters.channel && effectiveFilters.channel !== "all" ? effectiveFilters.channel : null
 
-  // Channel-filtered chart data — zero out the non-selected channel series
+  // Apply Performance filters to live data — same logic as Dashboard
+  const lf = { from: effectiveFilters.from, to: effectiveFilters.to, agent: effectiveFilters.agent }
+
+  // Filter email_tickets by date + agent + channel
+  const filtT = liveAvailable ? applyFilters(
+    (liveTickets ?? []).map(t => ({
+      ...t,
+      agent:   t.agent_name || t.agent || "",
+      date:    safeDate(t.date) || "",
+      channel: t.channel || "email",
+    })),
+    { ...lf, channel: effectiveFilters.channel }
+  ) : []
+
+  // Filter csat by date + agent only (no channel column in csat tab)
+  const filtC = liveAvailable ? applyFilters(
+    (liveCsat ?? []).map(c => ({
+      ...c,
+      agent: c.agent_name || "",
+      date:  safeDate(c.date) || "",
+    })),
+    lf
+  ) : []
+
+  // KPI calculations
+  // • Loading or API failed → liveAvailable=false → filtT/filtC=[] → all values = 0
+  // • API succeeded but filters return nothing → counts naturally = 0
+  const emailCount = filtT.length
+  const badCount   = filtC.filter(r => (r.rating ?? "").toString().trim().toLowerCase() === "bad").length
+  const okayCount  = filtC.filter(r => (r.rating ?? "").toString().trim().toLowerCase() === "okay").length
+  const greatCount = filtC.filter(r => (r.rating ?? "").toString().trim().toLowerCase() === "great").length
+  const totalRated = greatCount + okayCount + badCount
+  // Help Scout formula: CSAT% = Great / (Great + Okay + Bad) × 100
+  const csatScore  = totalRated > 0 ? +(greatCount / totalRated * 100).toFixed(1) : 0
+
+  const cards = [
+    { label: "Emails Handled", value: emailCount, unit: "",  change: 0, icon: Mail,        color: "cyan"    },
+    { label: "CSAT Score",     value: csatScore,  unit: "%", change: 0, icon: Star,        color: "amber"   },
+    { label: "Bad",            value: badCount,   unit: "",  change: 0, icon: XCircle,     color: "rose"    },
+    { label: "Okay",           value: okayCount,  unit: "",  change: 0, icon: CheckCircle, color: "emerald" },
+  ]
+
+  // Charts remain unchanged — zero out inactive channel series
   const perfChartData = charts.weeklyPerformance.map(row => ({
     ...row,
     emails: activeCh === "chat"  ? 0 : row.emails,
     chats:  activeCh === "email" ? 0 : row.chats,
   }))
-
-  // Loading → zeros; API failed → mock fallback; API ok → zeros (no live perf source yet)
-  const perfZeros = {
-    overallKPI: { ...kpi.overallKPI, value: 0, change: 0 },
-    emails:     { ...kpi.emails,     value: 0, change: 0 },
-    chats:      { ...kpi.chats,      value: 0, change: 0 },
-    csat:       { ...kpi.csat,       value: 0, change: 0 },
-    qa:         { ...kpi.qa,         value: 0, change: 0 },
-  }
-  const perfKpi = !liveLoaded
-    ? perfZeros
-    : liveError
-      ? { overallKPI: agentKpi?.overallKPI ?? kpi.overallKPI,
-          emails:     agentKpi?.emails     ?? kpi.emails,
-          chats:      agentKpi?.chats      ?? kpi.chats,
-          csat:       agentKpi?.csat       ?? kpi.csat,
-          qa:         agentKpi?.qa         ?? kpi.qa }
-      : perfZeros   // API ok — zeros (no separate live Performance source yet)
-
-  // Second KPI card switches between Emails and Chats based on active channel
-  const emailCard = activeCh === "chat"
-    ? { ...perfKpi.chats,  icon: MessageSquare, color: "purple" }
-    : { ...perfKpi.emails, icon: Mail,          color: "cyan"   }
-
-  const cards = [
-    { ...perfKpi.overallKPI, icon: Target, color: "blue"    },
-    emailCard,
-    { ...perfKpi.csat,       icon: Star,   color: "amber"   },
-    { ...perfKpi.qa,         icon: Shield, color: "emerald" },
-  ]
 
   return (
     <div>
@@ -1564,7 +1574,6 @@ const PerformancePage = ({ dark, currentUser }) => {
     </div>
   )
 }
-
 // QA AUDITS ————————————————————————————————————
 const QAPage = ({ dark, currentUser }) => {
   const { latestAudits } = useTableData()
