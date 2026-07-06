@@ -47,7 +47,7 @@ const useKPIData = () => ({
   overallKPI:  { value: 87.4, change: +3.2, unit: "%",  label: "Overall KPI"     },
   emails:      { value: 1243, change: -12,   unit: "",   label: "Emails Handled"  },
   chats:       { value: 876,  change: +54,   unit: "",   label: "Chats Handled"   },
-  csat:        { value: 4.7,  change: +0.3,  unit: "/5", label: "CSAT Score"      },
+  csat:        { value: 94,   change: +0.3,  unit: "%",  label: "CSAT Score"      },
   qa:          { value: 92.1, change: +1.8,  unit: "%",  label: "QA Score"        },
   attendance:  { value: 96.5, change: -0.5,  unit: "%",  label: "Attendance Rate" },
 })
@@ -77,9 +77,9 @@ const useChartData = () => {
     { week: "W4", emails: 1243, chats: 876 },
   ]
   const csatTrend = [
-    { month: "Jan", csat: 4.2 }, { month: "Feb", csat: 4.3 },
-    { month: "Mar", csat: 4.4 }, { month: "Apr", csat: 4.5 },
-    { month: "May", csat: 4.4 }, { month: "Jun", csat: 4.7 },
+    { month: "Jan", csat: 84 }, { month: "Feb", csat: 86 },
+    { month: "Mar", csat: 88 }, { month: "Apr", csat: 90 },
+    { month: "May", csat: 88 }, { month: "Jun", csat: 94 },
   ]
   const qaTrend = [
     { month: "Jan", qa: 88 }, { month: "Feb", qa: 86 },
@@ -109,11 +109,13 @@ const sheetToObjects = (arr) => {
  */
 const csatToNum = (val) => {
   const v = (val ?? "").toString().trim().toLowerCase()
-  if (v === "great") return 5
-  if (v === "okay")  return 3
-  if (v === "bad")   return 1
+  if (v === "great") return 100
+  if (v === "okay")  return 60
+  if (v === "bad")   return 20
   const n = parseFloat(v)
-  return isNaN(n) ? 0 : n
+  if (isNaN(n) || n === 0) return 0
+  // Numeric 1–5 scale → percentage; pass through if already ≥ 10 (already a %)
+  return n <= 5 ? Math.round(n * 20) : n
 }
 
 const useLiveData = () => {
@@ -157,10 +159,10 @@ const useTableData = () => {
     { id: 5, agent: "Muhammad Junaid",  auditor: "Admin User", score: 76, type: "Email", date: "2026-06-27", status: "Pass" },
   ]
   const leaderboard = [
-    { rank: 1, agent: "Muhammad Junaid",  kpi: 87.4, emails: 112, chats: 14, csat: 4.8, qa: 94, date: "2026-06-29" },
-    { rank: 2, agent: "Anum Aziz",        kpi: 82.1, emails: 98,  chats: 11, csat: 4.7, qa: 88, date: "2026-06-29" },
-    { rank: 3, agent: "Sufiyan Merchant", kpi: 79.6, emails: 105, chats: 12, csat: 4.6, qa: 85, date: "2026-06-29" },
-    { rank: 4, agent: "Adeel Hyder",      kpi: 74.3, emails: 88,  chats:  9, csat: 4.5, qa: 80, date: "2026-06-29" },
+    { rank: 1, agent: "Muhammad Junaid",  kpi: 87.4, emails: 112, chats: 14, csat: 96, qa: 94, date: "2026-06-29" },
+    { rank: 2, agent: "Anum Aziz",        kpi: 82.1, emails: 98,  chats: 11, csat: 94, qa: 88, date: "2026-06-29" },
+    { rank: 3, agent: "Sufiyan Merchant", kpi: 79.6, emails: 105, chats: 12, csat: 92, qa: 85, date: "2026-06-29" },
+    { rank: 4, agent: "Adeel Hyder",      kpi: 74.3, emails: 88,  chats:  9, csat: 90, qa: 80, date: "2026-06-29" },
   ]
   const pendingTasks = [
     { id: 1, title: "Review June QA Reports",        assignee: "Admin User",       due: "2026-06-30", priority: "High",   status: "Pending",     date: "2026-06-29" },
@@ -754,7 +756,7 @@ const CSATTrendChart = ({ data, dark }) => (
       <LineChart data={data}>
         <CartesianGrid strokeDasharray="3 3" {...gridStyle(dark)} />
         <XAxis dataKey="month" tick={axisStyle(dark)} axisLine={false} tickLine={false} />
-        <YAxis domain={[3.5,5]} tick={axisStyle(dark)} axisLine={false} tickLine={false} />
+        <YAxis domain={[0,100]} tick={axisStyle(dark)} axisLine={false} tickLine={false} />
         <Tooltip content={<ChartTooltip dark={dark} />} />
         <Line type="monotone" dataKey="csat" name="CSAT" stroke="#10B981" strokeWidth={2.5} dot={{ r: 4, fill: "#10B981" }} />
       </LineChart>
@@ -874,7 +876,7 @@ const LeaderboardTable = ({ data, dark }) => {
             <Avatar name={row.agent} size="sm" />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold truncate" style={{ color: tokens.textPrimary(dark) }}>{row.agent}</p>
-              <p className="text-xs" style={{ color: tokens.textSecondary(dark) }}>CSAT {row.csat} · QA {row.qa}%</p>
+              <p className="text-xs" style={{ color: tokens.textSecondary(dark) }}>CSAT {row.csat}% · QA {row.qa}%</p>
             </div>
             <div className="text-right flex-shrink-0">
               <p className="text-sm font-extrabold" style={{ color: "#3B82F6" }}>{row.kpi}%</p>
@@ -1298,10 +1300,13 @@ const DashboardPage = ({ dark, currentUser }) => {
           return 0
         }
         const emailCount = filtT.length
-        const csatNums   = filtC.map(r => r._csatNum).filter(v => v > 0)
-        const avgCsat    = csatNums.length
-          ? +(csatNums.reduce((s, v) => s + v, 0) / csatNums.length).toFixed(2)
-          : avgNum(filtT, "customer_rating")
+        const csatNums     = filtC.map(r => r._csatNum).filter(v => v > 0)
+        const rawRating    = avgNum(filtT, "customer_rating")
+        const avgCsat      = csatNums.length
+          ? +(csatNums.reduce((s, v) => s + v, 0) / csatNums.length).toFixed(1)
+          : rawRating > 0 && rawRating <= 5
+            ? +(rawRating * 20).toFixed(1)   // 1–5 scale → percentage
+            : rawRating                       // already a percentage or 0
         const avgQa = avgNum(filtC, "qa_score", "qa") || avgNum(filtT, "qa_score", "qa")
         return {
           overallKPI: { ...kpi.overallKPI, value: avgQa || avgCsat || 0, change: 0 },
@@ -1338,7 +1343,7 @@ const DashboardPage = ({ dark, currentUser }) => {
         if (r) { mKpi[m].sum += r; mKpi[m].n++ }
       })
       const monthlyKPI = Object.values(mKpi).map(m => ({
-        month: m.month, kpi: m.n ? +(m.sum / m.n * 20).toFixed(1) : 0, target: m.target,
+        month: m.month, kpi: m.n ? +(m.sum / m.n).toFixed(1) : 0, target: m.target,
       }))
       const wkMap = {}
       ;(liveTickets ?? []).forEach(t => {
@@ -1855,7 +1860,7 @@ const LeaderboardPage = ({ dark, currentUser }) => {
             <p className="text-2xl font-black" style={{ color: "#3B82F6" }}>{agent.kpi}%</p>
             <p className="text-xs mb-3" style={{ color: tokens.textSecondary(dark) }}>Overall KPI</p>
             <div className="flex justify-center gap-6">
-              {[["CSAT", agent.csat], ["QA", `${agent.qa}%`], ["Emails", agent.emails]].map(([lbl, val]) => (
+              {[["CSAT", `${agent.csat}%`], ["QA", `${agent.qa}%`], ["Emails", agent.emails]].map(([lbl, val]) => (
                 <div key={lbl}>
                   <p className="text-sm font-bold" style={{ color: tokens.textPrimary(dark) }}>{val}</p>
                   <p className="text-xs"           style={{ color: tokens.textMuted(dark) }}>{lbl}</p>
@@ -1890,7 +1895,7 @@ const LeaderboardPage = ({ dark, currentUser }) => {
                   </td>
                   <td className="py-3 pr-4 text-sm" style={{ color: tokens.textSecondary(dark) }}>{row.emails}</td>
                   <td className="py-3 pr-4 text-sm" style={{ color: tokens.textSecondary(dark) }}>{row.chats}</td>
-                  <td className="py-3 pr-4 text-sm" style={{ color: tokens.textSecondary(dark) }}>{row.csat}</td>
+                  <td className="py-3 pr-4 text-sm" style={{ color: tokens.textSecondary(dark) }}>{row.csat}%</td>
                   <td className="py-3 text-sm font-bold" style={{ color: row.qa >= 90 ? "#10B981" : "#F59E0B" }}>{row.qa}%</td>
                 </tr>
               ))}
