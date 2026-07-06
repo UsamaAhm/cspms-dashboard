@@ -1531,16 +1531,17 @@ const QAPage = ({ dark, currentUser }) => {
   const { latestAudits } = useTableData()
   const { agentLock, effectiveFilters, handleFilter, handleReset, filterData } = usePageFilters(currentUser)
 
-  const filtAudits = filterData(latestAudits)
-  const passCount  = filtAudits.filter(a => a.status === "Pass").length
-  const avgScore   = filtAudits.length ? Math.round(filtAudits.reduce((s,a) => s + a.score, 0) / filtAudits.length * 10) / 10 : 88.2
-  const passRate   = filtAudits.length ? Math.round(passCount / filtAudits.length * 100) : 87
+ // No real QA audit data source connected yet — show zeros until one is wired up
+  const filtAudits = []
+  const passCount  = 0
+  const avgScore   = 0
+  const passRate   = 0
 
   const stats = [
-    { label: "Total Audits",   value: filtAudits.length ? String(filtAudits.length) : "142", icon: ClipboardCheck, color: "#3B82F6" },
-    { label: "Pass Rate",      value: `${passRate}%`,  icon: CheckCircle,    color: "#10B981" },
-    { label: "Avg Score",      value: `${avgScore}%`,  icon: Star,           color: "#F59E0B" },
-    { label: "Pending Review", value: "14",            icon: Clock,          color: "#8B5CF6" },
+    { label: "Total Audits",   value: "0",  icon: ClipboardCheck, color: "#3B82F6" },
+    { label: "Pass Rate",      value: "0%", icon: CheckCircle,    color: "#10B981" },
+    { label: "Avg Score",      value: "0%", icon: Star,           color: "#F59E0B" },
+    { label: "Pending Review", value: "0",  icon: Clock,          color: "#8B5CF6" },
   ]
   return (
     <div>
