@@ -49,7 +49,7 @@ const useKPIData = () => ({
   chats:       { value: 876,  change: +54,   unit: "",   label: "Chats Handled"   },
   csat:        { value: 94,   change: +0.3,  unit: "%",  label: "CSAT Score"      },
   qa:          { value: 92.1, change: +1.8,  unit: "%",  label: "QA Score"        },
-  attendance:  { value: 96.5, change: -0.5,  unit: "%",  label: "Attendance Rate" },
+  attendance:  { value: 96.5, change: -0.5,  unit: "%",  label: "Productivity" },
 })
 
 const useChartData = () => {
