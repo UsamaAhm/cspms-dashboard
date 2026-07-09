@@ -510,6 +510,16 @@ const StatusDot = ({ status }) => {
   return <Icon size={14} style={{ color: map[status] || map.info, flexShrink: 0 }} />
 }
 
+const FlickerNum = ({ loading = false, value, unit = "" }) => {
+  const [flicker, setFlicker] = useState(0)
+  useEffect(() => {
+    if (!loading) return
+    const id = setInterval(() => setFlicker(Math.floor(Math.random() * 100)), 80)
+    return () => clearInterval(id)
+  }, [loading])
+  return <>{loading ? flicker : value}{unit}</>
+}
+
 const KPICard = ({ label, value, unit, change, icon: Icon, color = "blue", dark, loading = false }) => {
   const pos = change >= 0
   const pal = PALETTE[color]
@@ -1584,7 +1594,7 @@ const PerformancePage = ({ dark, currentUser }) => {
       <PageFilterBar config={FILTER_CONFIGS.performance} dark={dark} agentLock={agentLock}
         onFilter={handleFilter} onReset={handleReset} onExport={() => {}} />
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
-        {cards.map((c, i) => <KPICard key={i} {...c} dark={dark} />)}
+        {cards.map((c, i) => <KPICard key={i} {...c} dark={dark} loading={!liveLoaded} />)}
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
         <WeeklyPerfChart data={perfChartData} dark={dark} />
@@ -2242,12 +2252,12 @@ const LeaderboardPage = ({ dark, currentUser }) => {
             <div className="text-3xl mb-3">{medals[i]}</div>
             <div className="flex justify-center mb-3"><Avatar name={agent.agent} size="lg" /></div>
             <p className="text-base font-extrabold mb-0.5" style={{ color: tokens.textPrimary(dark) }}>{agent.agent}</p>
-            <p className="text-2xl font-black" style={{ color: "#3B82F6" }}>{agent.kpi}%</p>
+            <p className="text-2xl font-black" style={{ color: "#3B82F6" }}><FlickerNum loading={!liveLoaded} value={agent.kpi} unit="%" /></p>
             <p className="text-xs mb-3" style={{ color: tokens.textSecondary(dark) }}>Overall KPI</p>
             <div className="flex justify-center gap-6">
-              {[["CSAT", `${agent.csat}%`], ["QA", `${agent.qa}%`], ["Emails", agent.emails]].map(([lbl, val]) => (
+              {[["CSAT", agent.csat, "%"], ["QA", agent.qa, "%"], ["Emails", agent.emails, ""]].map(([lbl, val, u]) => (
                 <div key={lbl}>
-                  <p className="text-sm font-bold" style={{ color: tokens.textPrimary(dark) }}>{val}</p>
+                  <p className="text-sm font-bold" style={{ color: tokens.textPrimary(dark) }}><FlickerNum loading={!liveLoaded} value={val} unit={u} /></p>
                   <p className="text-xs"           style={{ color: tokens.textMuted(dark) }}>{lbl}</p>
                 </div>
               ))}
@@ -2276,12 +2286,12 @@ const LeaderboardPage = ({ dark, currentUser }) => {
                     </div>
                   </td>
                   <td className="py-3 pr-4">
-                    <span className="text-sm font-extrabold" style={{ color: "#3B82F6" }}>{row.kpi}%</span>
+                    <span className="text-sm font-extrabold" style={{ color: "#3B82F6" }}><FlickerNum loading={!liveLoaded} value={row.kpi} unit="%" /></span>
                   </td>
-                  <td className="py-3 pr-4 text-sm" style={{ color: tokens.textSecondary(dark) }}>{row.emails}</td>
-                  <td className="py-3 pr-4 text-sm" style={{ color: tokens.textSecondary(dark) }}>{row.chats}</td>
-                  <td className="py-3 pr-4 text-sm" style={{ color: tokens.textSecondary(dark) }}>{row.csat}%</td>
-                  <td className="py-3 text-sm font-bold" style={{ color: row.qa >= 90 ? "#10B981" : "#F59E0B" }}>{row.qa}%</td>
+                  <td className="py-3 pr-4 text-sm" style={{ color: tokens.textSecondary(dark) }}><FlickerNum loading={!liveLoaded} value={row.emails} /></td>
+                  <td className="py-3 pr-4 text-sm" style={{ color: tokens.textSecondary(dark) }}><FlickerNum loading={!liveLoaded} value={row.chats} /></td>
+                  <td className="py-3 pr-4 text-sm" style={{ color: tokens.textSecondary(dark) }}><FlickerNum loading={!liveLoaded} value={row.csat} unit="%" /></td>
+                  <td className="py-3 text-sm font-bold" style={{ color: row.qa >= 90 ? "#10B981" : "#F59E0B" }}><FlickerNum loading={!liveLoaded} value={row.qa} unit="%" /></td>
                 </tr>
               ))}
             </tbody>
