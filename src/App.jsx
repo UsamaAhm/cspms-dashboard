@@ -218,6 +218,9 @@ const FC_AGENTS = [
   { value:"anum-aziz",        label:"Anum Aziz"        },
   { value:"sufiyan-merchant", label:"Sufiyan Merchant" },
   { value:"adeel-hyder",      label:"Adeel Hyder"      },
+  { value:"selena-zyn",       label:"Selena Zyn"       },
+  { value:"ayna-ray",         label:"Ayna Ray"         },
+  { value:"kabeer-ahmed",     label:"Kabeer Ahmed"     },
 ]
 const FC_KPI_TYPES = [
   { value:"all",label:"All KPIs" },{ value:"qa",label:"QA Score" },
@@ -402,6 +405,9 @@ const DASHBOARD_ALLOWED_AGENTS = [
   "Anum Aziz",
   "Sufiyan Merchant",
   "Adeel Hyder",
+  "Selena Zyn",
+  "Ayna Ray",
+  "Kabeer Ahmed",
 ]
 const normAgentName = (raw) => {
   const n = (raw ?? "").trim().toLowerCase()
@@ -409,6 +415,9 @@ const normAgentName = (raw) => {
   if (n.includes("anum"))                        return "Anum Aziz"
   if (n.includes("sufiyan"))                     return "Sufiyan Merchant"
   if (n.includes("adeel"))                       return "Adeel Hyder"
+  if (n.includes("selena"))                      return "Selena Zyn"
+  if (n.includes("ayna"))                        return "Ayna Ray"
+  if (n.includes("kabeer"))                      return "Kabeer Ahmed"
   return (raw ?? "").trim()
 }
 
