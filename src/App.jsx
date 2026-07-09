@@ -1534,21 +1534,7 @@ const DashboardPage = ({ dark, currentUser, onNavigate, tasks = [] }) => {
       <PageHeader dark={dark} title="Dashboard"
         subtitle={`Welcome back, ${currentUser?.name ?? ""}! Here's your ${currentUser?.role === "Agent" ? "" : "team's "}performance overview.`} />
       <PageFilterBar
-        config={(() => {
-          if (!liveAvailable || !(liveAgents?.length > 0)) return FILTER_CONFIGS.dashboard
-          const agentOpts = [
-            { value: "all", label: "All Agents" },
-            ...(liveAgents ?? [])
-              .map(a => ({ value: agentSlug(a.name || ""), label: a.name || "" }))
-              .filter(o => o.value && o.value !== "all"),
-          ]
-          return {
-            ...FILTER_CONFIGS.dashboard,
-            fields: FILTER_CONFIGS.dashboard.fields.map(f =>
-              f.key === "agent" ? { ...f, options: agentOpts } : f
-            ),
-          }
-        })()}
+        config={FILTER_CONFIGS.dashboard}
         dark={dark} agentLock={agentLock}
         onFilter={handleFilter} onReset={handleReset}
         onExport={() => downloadCSV([...filtActivities, ...filtAudits], "dashboard.csv")} />
