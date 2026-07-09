@@ -922,7 +922,18 @@ const LatestAuditsTable = ({ data, dark }) => (
 )
 
 const LeaderboardTable = ({ data, dark, onViewAll }) => {
-  const medals = ["🥇","🥈","🥉","4","5"]
+  const rankStyle = (i) => {
+    if (i === 0) return { background: dark ? "rgba(245,158,11,0.12)" : "rgba(255,251,235,1)", border: "1px solid rgba(245,158,11,0.45)", boxShadow: "0 0 18px rgba(245,158,11,0.35)" }
+    if (i === 1) return { background: dark ? "rgba(148,163,184,0.10)" : "rgba(248,250,252,1)", border: "1px solid rgba(148,163,184,0.40)", boxShadow: "0 0 12px rgba(148,163,184,0.22)" }
+    if (i === 2) return { background: dark ? "rgba(180,120,60,0.12)"  : "rgba(254,247,240,1)", border: "1px solid rgba(180,120,60,0.38)", boxShadow: "0 0 9px rgba(180,120,60,0.20)" }
+    return {}
+  }
+  const RankBadge = ({ i }) => i < 3
+    ? <span className="text-lg w-8 text-center flex-shrink-0" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.25))" }}>{["🥇","🥈","🥉"][i]}</span>
+    : <span className="w-8 flex-shrink-0 flex items-center justify-center">
+        <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
+          style={{ background: dark ? "rgba(255,255,255,0.08)" : "rgba(15,23,42,0.06)", color: tokens.textSecondary(dark) }}>{i + 1}</span>
+      </span>
   return (
     <GlassCard dark={dark} className="p-5">
       <SectionHeader title="Leaderboard" subtitle="Top performers this month" dark={dark}
@@ -932,12 +943,12 @@ const LeaderboardTable = ({ data, dark, onViewAll }) => {
       ) : (
       <div className="space-y-2">
         {data.map((row, i) => (
-          <div key={row.rank} className="flex items-center gap-3 p-2.5 rounded-xl"
-            style={i === 0 ? { background: dark ? "rgba(59,130,246,0.12)" : "rgba(239,246,255,1)", border: "1px solid rgba(59,130,246,0.2)" } : {}}>
-            <span className="text-lg w-7 text-center flex-shrink-0">{medals[i]}</span>
+          <div key={row.rank} className="flex items-center gap-3 p-2.5 rounded-xl" style={rankStyle(i)}>
+            <RankBadge i={i} />
             <Avatar name={row.agent} size="sm" />
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold truncate" style={{ color: tokens.textPrimary(dark) }}>{row.agent}</p>
+              <p className="text-sm font-semibold truncate"
+                style={{ color: i === 0 ? (dark ? "#FCD34D" : "#B45309") : tokens.textPrimary(dark), textShadow: i === 0 ? "0 0 10px rgba(245,158,11,0.35)" : "none" }}>{row.agent}</p>
               <p className="text-xs" style={{ color: tokens.textSecondary(dark) }}>CSAT {row.csat}% · QA {row.qa}%</p>
             </div>
             <div className="text-right flex-shrink-0">
@@ -2295,10 +2306,15 @@ const LeaderboardPage = ({ dark, currentUser }) => {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
         {computedLeaderboard.slice(0,3).map((agent, i) => (
           <GlassCard key={i} dark={dark} className="p-6 text-center"
-            style={i === 0 ? { boxShadow: "0 0 0 2px #3B82F6, 0 8px 32px rgba(59,130,246,0.2)" } : {}}>
-            <div className="text-3xl mb-3">{medals[i]}</div>
+            style={
+              i === 0 ? { border: "1px solid rgba(245,158,11,0.5)",  boxShadow: "0 0 0 1px rgba(245,158,11,0.5), 0 10px 34px rgba(245,158,11,0.30)" } :
+              i === 1 ? { border: "1px solid rgba(148,163,184,0.45)", boxShadow: "0 8px 26px rgba(148,163,184,0.22)" } :
+              i === 2 ? { border: "1px solid rgba(180,120,60,0.4)",   boxShadow: "0 6px 20px rgba(180,120,60,0.18)" } : {}
+            }>
+            <div className="text-3xl mb-3" style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.25))" }}>{medals[i]}</div>
             <div className="flex justify-center mb-3"><Avatar name={agent.agent} size="lg" /></div>
-            <p className="text-base font-extrabold mb-0.5" style={{ color: tokens.textPrimary(dark) }}>{agent.agent}</p>
+            <p className="text-base font-extrabold mb-0.5"
+              style={{ color: i === 0 ? (dark ? "#FCD34D" : "#B45309") : tokens.textPrimary(dark), textShadow: i === 0 ? "0 0 12px rgba(245,158,11,0.4)" : "none" }}>{agent.agent}</p>
             <p className="text-2xl font-black" style={{ color: "#3B82F6" }}><FlickerNum loading={!liveLoaded} value={agent.kpi} unit="%" /></p>
             <p className="text-xs mb-3" style={{ color: tokens.textSecondary(dark) }}>Overall KPI</p>
             <div className="flex justify-center gap-6">
@@ -2324,8 +2340,18 @@ const LeaderboardPage = ({ dark, currentUser }) => {
             </thead>
             <tbody>
               {computedLeaderboard.map((row, i) => (
-                <tr key={row.rank} style={{ borderTop: `1px solid ${dark ? "rgba(255,255,255,0.05)" : "#f1f5f9"}` }}>
-                  <td className="py-3 pr-4 text-lg">{medals[i]}</td>
+                <tr key={row.rank} style={{
+                  borderTop: `1px solid ${dark ? "rgba(255,255,255,0.05)" : "#f1f5f9"}`,
+                  background: i === 0 ? (dark ? "rgba(245,158,11,0.08)" : "rgba(255,251,235,0.7)")
+                            : i === 1 ? (dark ? "rgba(148,163,184,0.06)" : "rgba(248,250,252,0.7)")
+                            : i === 2 ? (dark ? "rgba(180,120,60,0.06)"  : "rgba(254,247,240,0.7)") : "transparent",
+                }}>
+                  <td className="py-3 pr-4 text-lg">
+                    {i < 3
+                      ? <span style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.25))" }}>{["🥇","🥈","🥉"][i]}</span>
+                      : <span className="inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold"
+                          style={{ background: dark ? "rgba(255,255,255,0.08)" : "rgba(15,23,42,0.06)", color: tokens.textSecondary(dark) }}>{i + 1}</span>}
+                  </td>
                   <td className="py-3 pr-4">
                     <div className="flex items-center gap-2">
                       <Avatar name={row.agent} size="sm" />
