@@ -510,9 +510,15 @@ const StatusDot = ({ status }) => {
   return <Icon size={14} style={{ color: map[status] || map.info, flexShrink: 0 }} />
 }
 
-const KPICard = ({ label, value, unit, change, icon: Icon, color = "blue", dark }) => {
+const KPICard = ({ label, value, unit, change, icon: Icon, color = "blue", dark, loading = false }) => {
   const pos = change >= 0
   const pal = PALETTE[color]
+  const [flicker, setFlicker] = useState(0)
+  useEffect(() => {
+    if (!loading) return
+    const id = setInterval(() => setFlicker(Math.floor(Math.random() * 100)), 80)
+    return () => clearInterval(id)
+  }, [loading])
   return (
     <GlassCard dark={dark} className="p-5">
       <div className="flex items-start justify-between mb-3">
@@ -526,8 +532,8 @@ const KPICard = ({ label, value, unit, change, icon: Icon, color = "blue", dark 
           {Math.abs(change)}
         </span>
       </div>
-      <p className="text-2xl font-extrabold" style={{ color: tokens.textPrimary(dark) }}>
-        {value}{unit}
+      <p className="text-2xl font-extrabold" style={{ color: tokens.textPrimary(dark), opacity: loading ? 0.6 : 1 }}>
+        {loading ? flicker : value}{unit}
       </p>
       <p className="text-xs mt-0.5" style={{ color: tokens.textSecondary(dark) }}>{label}</p>
     </GlassCard>
@@ -1477,7 +1483,7 @@ const DashboardPage = ({ dark, currentUser, onNavigate, tasks = [] }) => {
         onExport={() => downloadCSV([...filtActivities, ...filtAudits], "dashboard.csv")} />
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-5">
-        {cards.map((c, i) => <KPICard key={i} {...c} dark={dark} />)}
+        {cards.map((c, i) => <KPICard key={i} {...c} dark={dark} loading={!liveLoaded} />)}
       </div>
       {/* Charts — live when API loaded, mock when no filter, hidden when filter + no live data */}
       {showCharts && (
