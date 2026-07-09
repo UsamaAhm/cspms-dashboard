@@ -1550,8 +1550,7 @@ const DashboardPage = ({ dark, currentUser, onNavigate, tasks = [] }) => {
   return (
     <div>
       <PageHeader dark={dark} title="Dashboard"
-        subtitle={`Welcome back, ${currentUser?.name ?? ""}! Here's your team's performance overview.`}
-        actions={<Btn variant="primary" icon={Download} onClick={() => downloadCSV([...filtActivities, ...filtAudits], "dashboard.csv")}>Export</Btn>} />
+        subtitle={`Welcome back, ${currentUser?.name ?? ""}! Here's your ${currentUser?.role === "Agent" ? "" : "team's "}performance overview.`} />
       <PageFilterBar
         config={(() => {
           if (!liveAvailable || !(liveAgents?.length > 0)) return FILTER_CONFIGS.dashboard
@@ -2775,7 +2774,7 @@ const SettingsPage = ({ dark, currentUser, onChangePassword }) => {
 // ─────────────────────────────────────────────
 // PROFILE PAGE
 // ─────────────────────────────────────────────
-const ProfilePage = ({ dark, currentUser }) => {
+const ProfilePage = ({ dark, currentUser, tasks = [] }) => {
   // ── editable state — persisted to localStorage (no Supabase touched) ────────
   const LS_KEY = "cspms_profile_prefs"
   const _saved = (() => { try { return JSON.parse(localStorage.getItem(LS_KEY) || "{}") } catch { return {} } })()
@@ -2811,12 +2810,18 @@ const ProfilePage = ({ dark, currentUser }) => {
   }
   const readSt = { ...inputSt, opacity: 0.6, cursor: "default" }
 
-  const activities = [
-    { action:"Completed QA audit — Muhammad Junaid scored 94%", time:"2h ago", icon:ClipboardCheck },
-    { action:"Updated KPI configuration",            time:"5h ago", icon:Settings       },
-    { action:"Reviewed 12 email tickets",            time:"1d ago", icon:Mail           },
-    { action:"Team meeting — performance review",    time:"2d ago", icon:Star           },
-  ]
+  // Real activity derived from the logged-in user's tasks (agents see only their own)
+  const isAgentProfile = currentUser?.role === "Agent"
+  const myTasks = isAgentProfile
+    ? tasks.filter(t => agentSlug(t.assignee) === agentSlug(currentUser?.name))
+    : tasks
+  const activities = myTasks.map(t => ({
+    action: t.status === "Completed"
+      ? `Completed task: ${t.title}${t.completionComment ? ` — "${t.completionComment}"` : ""}`
+      : `Task ${t.status}: ${t.title}`,
+    time: t.due ? `Due ${t.due}` : "",
+    icon: CheckSquare,
+  }))
 
   return (
     <div>
@@ -2895,7 +2900,9 @@ const ProfilePage = ({ dark, currentUser }) => {
         <GlassCard dark={dark} className="p-5">
           <SectionHeader dark={dark} title="Recent Activity" subtitle="Your latest actions" />
           <div className="space-y-3 mt-4">
-            {activities.map((a, i) => (
+            {activities.length === 0 ? (
+              <p className="text-xs" style={{ color: tokens.textMuted(dark) }}>No recent activity found.</p>
+            ) : activities.map((a, i) => (
               <div key={i} className="flex items-start gap-3">
                 <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
                   style={{ background:"rgba(59,130,246,0.1)" }}>
@@ -3392,7 +3399,7 @@ export default function App() {
       {page === "reports"     && <ReportsPage      dark={dark} currentUser={currentUser} />}
       {page === "leaderboard" && <LeaderboardPage  dark={dark} currentUser={currentUser} />}
       {page === "settings"    && <SettingsPage     dark={dark} currentUser={currentUser} onChangePassword={handleChangePassword} />}
-      {page === "profile"     && <ProfilePage      dark={dark} currentUser={currentUser} />}
+      {page === "profile"     && <ProfilePage      dark={dark} currentUser={currentUser} tasks={tasks} />}
     </AppLayout>
   )
 }
