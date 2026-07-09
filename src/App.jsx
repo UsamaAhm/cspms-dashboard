@@ -30,7 +30,7 @@ const ROLE_PERMISSIONS = {
     canViewAllAgents: true,
   },
   "Agent": {
-    pages:            ["dashboard","performance","qa-audits","attendance","tasks","profile"],
+    pages:            ["dashboard","performance","qa-audits","attendance","tasks","leaderboard","profile"],
     canViewAllAgents: false,
   },
 }
@@ -1379,7 +1379,7 @@ const DashboardPage = ({ dark, currentUser, onNavigate, tasks = [] }) => {
   )
   // liveLeaderboard always returns an array (4 agents); dates already baked in — only apply agent filter here
   const filtLeaderboard = liveLeaderboard.filter(row =>
-    !effectiveFilters.agent || effectiveFilters.agent === "all" || agentSlug(row.agent) === effectiveFilters.agent
+    agentLock || !effectiveFilters.agent || effectiveFilters.agent === "all" || agentSlug(row.agent) === effectiveFilters.agent
   )
 
   const allTableEmpty = filtLeaderboard.length === 0 && filtTasks.length === 0
@@ -2274,9 +2274,9 @@ const LeaderboardPage = ({ dark, currentUser }) => {
       .sort((a, b) => b.kpi - a.kpi || b.emails - a.emails)
       .map((a, i) => ({ ...a, rank: i + 1 }))
 
-    // Agent filter
-    if (effectiveFilters.agent && effectiveFilters.agent !== "all") {
-      rows = rows.filter(r => r.agent === effectiveFilters.agent)
+    // Agent filter (skip for locked agent logins — they view the full ranking)
+    if (!agentLock && effectiveFilters.agent && effectiveFilters.agent !== "all") {
+      rows = rows.filter(r => agentSlug(r.agent) === effectiveFilters.agent)
     }
     // Search filter
     const q = (effectiveFilters.search || "").trim().toLowerCase()
