@@ -1360,13 +1360,12 @@ const DashboardPage = ({ dark, currentUser, onNavigate, tasks = [] }) => {
       })
     }
     return Object.values(byAgent)
-      .sort((a, b) => b.emails - a.emails || b.csatGreat - a.csatGreat)
-      .map((a, i) => ({
-        rank: i + 1, agent: a.agent, kpi: 0,
-        emails: a.emails, chats: 0,
-        csat: a.csatTotal ? +(a.csatGreat / a.csatTotal * 100).toFixed(1) : 0,
-        qa: 0, date: todayISO(),
-      }))
+      .map(a => {
+        const csat = a.csatTotal ? +(a.csatGreat / a.csatTotal * 100).toFixed(1) : 0
+        return { agent: a.agent, emails: a.emails, chats: 0, csat, qa: 0, kpi: csat, date: todayISO() }
+      })
+      .sort((a, b) => b.kpi - a.kpi || b.emails - a.emails)
+      .map((a, i) => ({ ...a, rank: i + 1 }))
   })()
 
   const filtActivities  = applyFilters(liveAvailable ? (liveActivities ?? []) : tables.recentActivities, effectiveFilters)
