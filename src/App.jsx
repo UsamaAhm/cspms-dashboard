@@ -1328,7 +1328,7 @@ const DashboardPage = ({ dark, currentUser, onNavigate, tasks = [] }) => {
   )
   // liveLeaderboard always returns an array (4 agents); dates already baked in — only apply agent filter here
   const filtLeaderboard = liveLeaderboard.filter(row =>
-    !effectiveFilters.agent || effectiveFilters.agent === "all" || row.agent === effectiveFilters.agent
+    !effectiveFilters.agent || effectiveFilters.agent === "all" || agentSlug(row.agent) === effectiveFilters.agent
   )
 
   const allTableEmpty = filtLeaderboard.length === 0 && filtTasks.length === 0
@@ -1409,15 +1409,19 @@ const DashboardPage = ({ dark, currentUser, onNavigate, tasks = [] }) => {
     try {
       const DAYS   = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"]
       const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+      // Selected-agent filter for charts (All Agents → unfiltered, identical to before)
+      const chTickets = activeAgent ? (liveTickets ?? []).filter(t => agentSlug(t.agent_name || t.agent || "") === activeAgent) : (liveTickets ?? [])
+      const chCsat    = activeAgent ? (liveCsat ?? []).filter(c => agentSlug(c.agent_name || "") === activeAgent) : (liveCsat ?? [])
       const wMap = {}
       DAYS.forEach(d => { wMap[d] = { day: d, emails: 0, chats: 0, qa: 0 } })
-      ;(liveTickets ?? []).forEach(t => {
+      ;(chTickets).forEach(t => {
         const d = safeDate(t.date); if (!d) return
         wMap[DAYS[new Date(d).getDay()]].emails++
       })
       const weeklyPerformance = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d => wMap[d])
       const mKpi = {}
       ;(liveCsat ?? []).forEach(c => {
+       ;(chCsat).forEach(c => {
         const d = safeDate(c.date); if (!d) return
         if (!csatIsValid(c.rating)) return
         const m = MONTHS[new Date(d).getMonth()]
@@ -1429,7 +1433,7 @@ const DashboardPage = ({ dark, currentUser, onNavigate, tasks = [] }) => {
         month: m.month, kpi: m.total ? +(m.great / m.total * 100).toFixed(1) : 0, target: m.target,
       }))
       const wkMap = {}
-      ;(liveTickets ?? []).forEach(t => {
+      ;(chTickets).forEach(t => {
         const d = safeDate(t.date); if (!d) return
         const wk = "W" + Math.ceil(new Date(d).getDate() / 7)
         if (!wkMap[wk]) wkMap[wk] = { week: wk, emails: 0, chats: 0 }
@@ -1437,7 +1441,7 @@ const DashboardPage = ({ dark, currentUser, onNavigate, tasks = [] }) => {
       })
       const emailsVsChats = Object.values(wkMap).slice(-4)
       const csatM = {}
-      ;(liveCsat ?? []).forEach(c => {
+      ;(chCsat).forEach(c => {
         const d = safeDate(c.date); if (!d) return
         if (!csatIsValid(c.rating)) return
         const m = MONTHS[new Date(d).getMonth()]
