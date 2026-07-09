@@ -1847,23 +1847,42 @@ const TasksPage = ({ dark, currentUser, tasks = [], setTasks }) => {
   const byStatus = (s) => allFiltered.filter(t => t.status === s)
 
   const [showModal, setShowModal] = useState(false)
-  const [form, setForm] = useState({ title: "", assignee: "", priority: "Medium", due: "" })
+  const [editingId, setEditingId] = useState(null)
+  const [form, setForm] = useState({ title: "", assignee: "", priority: "Medium", due: "", status: "Pending" })
 
-  const createTask = () => {
-    if (!form.title.trim() || !form.assignee || !form.due) return
-    const t = {
-      id: Date.now(),
-      title: form.title.trim(),
-      assignee: form.assignee,
-      priority: form.priority,
-      due: form.due,
-      status: "Pending",
-      date: todayISO(),
-    }
-    setTasks?.(prev => [t, ...prev])
-    setForm({ title: "", assignee: "", priority: "Medium", due: "" })
-    setShowModal(false)
+  const blankForm = { title: "", assignee: "", priority: "Medium", due: "", status: "Pending" }
+
+  const openCreate = () => { setEditingId(null); setForm(blankForm); setShowModal(true) }
+  const openEdit   = (task) => {
+    setEditingId(task.id)
+    setForm({ title: task.title, assignee: task.assignee, priority: task.priority, due: task.due, status: task.status || "Pending" })
+    setShowModal(true)
   }
+  const closeModal = () => { setEditingId(null); setForm(blankForm); setShowModal(false) }
+
+  const saveTask = () => {
+    if (!form.title.trim() || !form.assignee || !form.due) return
+    if (editingId != null) {
+      setTasks?.(prev => prev.map(t => t.id === editingId
+        ? { ...t, title: form.title.trim(), assignee: form.assignee, priority: form.priority, due: form.due, status: form.status }
+        : t))
+    } else {
+      const t = {
+        id: Date.now(),
+        title: form.title.trim(),
+        assignee: form.assignee,
+        priority: form.priority,
+        due: form.due,
+        status: form.status || "Pending",
+        date: todayISO(),
+      }
+      setTasks?.(prev => [t, ...prev])
+    }
+    closeModal()
+  }
+
+  const deleteTask   = (id) => setTasks?.(prev => prev.filter(t => t.id !== id))
+  const updateStatus = (id, status) => setTasks?.(prev => prev.map(t => t.id === id ? { ...t, status } : t))
 
   const modalInp = {
     background: dark ? "rgba(255,255,255,0.06)" : "rgba(15,23,42,0.05)",
@@ -1880,7 +1899,7 @@ const TasksPage = ({ dark, currentUser, tasks = [], setTasks }) => {
   return (
     <div>
       <PageHeader dark={dark} title="Tasks" subtitle="Manage and track team tasks and assignments."
-        actions={canCreate ? <Btn variant="primary" icon={Plus} onClick={() => setShowModal(true)}>New Task</Btn> : null} />
+        actions={canCreate ? <Btn variant="primary" icon={Plus} onClick={openCreate}>New Task</Btn> : null} />
       <PageFilterBar config={FILTER_CONFIGS.tasks} dark={dark} agentLock={agentLock}
         onFilter={handleFilter} onReset={handleReset}
         onExport={() => downloadCSV(allFiltered, "tasks.csv")} />
@@ -1902,13 +1921,30 @@ const TasksPage = ({ dark, currentUser, tasks = [], setTasks }) => {
                 <p className="text-xs text-center">No {col.label.toLowerCase()} tasks</p>
               </div>
             ) : col.tasks.map(task => (
-              <div key={task.id} className="p-3 rounded-xl mb-2"
+             <div key={task.id} className="p-3 rounded-xl mb-2"
                 style={tokens.surface(dark)}>
                 <p className="text-sm font-semibold mb-1" style={{ color: tokens.textPrimary(dark) }}>{task.title}</p>
                 <div className="flex items-center justify-between">
                   <p className="text-xs" style={{ color: tokens.textSecondary(dark) }}>Due {task.due} · {task.assignee}</p>
                   <Badge label={task.priority} variant={task.priority.toLowerCase()} />
                 </div>
+                {canCreate ? (
+                  <div className="flex items-center gap-3 mt-2 pt-2"
+                    style={{ borderTop: dark ? "1px solid rgba(255,255,255,0.06)" : "1px solid rgba(148,163,184,0.16)" }}>
+                    <button onClick={() => openEdit(task)} className="text-xs font-semibold" style={{ color: "#3B82F6" }}>Edit</button>
+                    <button onClick={() => deleteTask(task.id)} className="text-xs font-semibold" style={{ color: "#EF4444" }}>Delete</button>
+                  </div>
+                ) : (
+                  <div className="mt-2 pt-2"
+                    style={{ borderTop: dark ? "1px solid rgba(255,255,255,0.06)" : "1px solid rgba(148,163,184,0.16)" }}>
+                    <select value={task.status} onChange={e => updateStatus(task.id, e.target.value)}
+                      className="text-xs rounded-lg outline-none py-1 px-2" style={modalInp}>
+                      {["Pending", "In Progress", "Completed"].map(s => (
+                        <option key={s} value={s} style={{ background: dark ? "#1e293b" : "#fff", color: dark ? "#e2e8f0" : "#0f172a" }}>{s}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
             ))}
           </GlassCard>
@@ -1918,12 +1954,12 @@ const TasksPage = ({ dark, currentUser, tasks = [], setTasks }) => {
       {canCreate && showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{ background: "rgba(2,6,23,0.55)", backdropFilter: "blur(2px)", WebkitBackdropFilter: "blur(2px)" }}
-          onClick={() => setShowModal(false)}>
+          onClick={closeModal}>
           <div className="w-full" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
             <GlassCard dark={dark} className="p-6">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-base font-bold" style={{ color: tokens.textPrimary(dark) }}>New Task</h3>
-                <button onClick={() => setShowModal(false)} style={{ color: tokens.textSecondary(dark) }}>
+                <h3 className="text-base font-bold" style={{ color: tokens.textPrimary(dark) }}>{editingId != null ? "Edit Task" : "New Task"}</h3>
+                <button onClick={closeModal} style={{ color: tokens.textSecondary(dark) }}>
                   <X size={18} />
                 </button>
               </div>
@@ -1958,17 +1994,26 @@ const TasksPage = ({ dark, currentUser, tasks = [], setTasks }) => {
                   <input type="date" value={form.due} onChange={e => setForm({ ...form, due: e.target.value })}
                     className="w-full text-sm rounded-xl outline-none py-2 px-3" style={modalInp} />
                 </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1.5" style={{ color: tokens.textSecondary(dark) }}>Status</label>
+                  <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}
+                    className="w-full text-sm rounded-xl outline-none py-2 px-3" style={modalInp}>
+                    {["Pending", "In Progress", "Completed"].map(s => (
+                      <option key={s} value={s} style={{ background: dark ? "#1e293b" : "#fff", color: dark ? "#e2e8f0" : "#0f172a" }}>{s}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <div className="flex items-center justify-end gap-2 mt-5">
-                <button onClick={() => setShowModal(false)}
+                <button onClick={closeModal}
                   className="px-4 py-2 text-sm font-bold rounded-xl"
                   style={{ background: "transparent", color: tokens.textSecondary(dark), border: dark ? "1px solid rgba(255,255,255,0.1)" : "1px solid rgba(148,163,184,0.3)" }}>
                   Cancel
                 </button>
-                <button onClick={createTask}
+                <button onClick={saveTask}
                   className="px-4 py-2 text-sm font-bold rounded-xl"
                   style={{ background: "linear-gradient(135deg,#3B82F6,#2563EB)", color: "#fff", boxShadow: "0 4px 12px rgba(59,130,246,0.35)" }}>
-                  Create Task
+                  {editingId != null ? "Save Changes" : "Create Task"}
                 </button>
               </div>
             </GlassCard>
