@@ -1301,6 +1301,32 @@ const AppLayout = ({ dark, setDark, page, setPage, currentUser, onLogout, tasks 
 // ─────────────────────────────────────────────
 
 // DASHBOARD ————————————————————————————————————
+// UI-only easter egg: a playful badge that dodges the cursor. No data/logic effect.
+const KpiPrankBadge = () => {
+  const [pos, setPos] = useState({ top: "42%", left: "58%" })
+  const dodge = (e) => {
+    if (e) { e.preventDefault?.(); e.stopPropagation?.() }
+    setPos({
+      top:  Math.floor(12 + Math.random() * 72) + "%",
+      left: Math.floor(6  + Math.random() * 80) + "%",
+    })
+  }
+  return (
+    <button type="button"
+      onMouseEnter={dodge} onMouseDown={dodge} onClick={dodge} onTouchStart={dodge}
+      style={{
+        position: "fixed", top: pos.top, left: pos.left, transform: "translate(-50%,-50%)",
+        zIndex: 9999, transition: "top 0.15s ease, left 0.15s ease",
+        background: "linear-gradient(135deg,#F59E0B,#EF4444)", color: "#fff",
+        border: "none", borderRadius: 9999, padding: "10px 18px",
+        fontSize: 13, fontWeight: 800, whiteSpace: "nowrap", userSelect: "none",
+        boxShadow: "0 8px 24px rgba(239,68,68,0.4)", cursor: "pointer",
+      }}>
+      🎉 GET 5% ADDITION IN KPI
+    </button>
+  )
+}
+
 const DashboardPage = ({ dark, currentUser, onNavigate, tasks = [] }) => {
   const kpi    = useKPIData()
   const charts = useChartData()
@@ -1579,6 +1605,7 @@ const DashboardPage = ({ dark, currentUser, onNavigate, tasks = [] }) => {
           </div>
         </>
       )}
+      <KpiPrankBadge />
     </div>
   )
 }
