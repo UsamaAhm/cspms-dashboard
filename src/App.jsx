@@ -1234,7 +1234,7 @@ const AppLayout = ({ dark, setDark, page, setPage, currentUser, onLogout, childr
 // ─────────────────────────────────────────────
 
 // DASHBOARD ————————————————————————————————————
-const DashboardPage = ({ dark, currentUser, onNavigate }) => {
+const DashboardPage = ({ dark, currentUser, onNavigate, tasks = [] }) => {
   const kpi    = useKPIData()
   const charts = useChartData()
   const tables = useTableData()
@@ -1304,7 +1304,12 @@ const DashboardPage = ({ dark, currentUser, onNavigate }) => {
 
   const filtActivities  = applyFilters(liveAvailable ? (liveActivities ?? []) : tables.recentActivities, effectiveFilters)
   const filtAudits      = filterData(tables.latestAudits)
-  const filtTasks       = []  // No real task source yet — show empty state
+  const filtTasks       = applyFilters(
+    canViewAllAgents(currentUser?.role)
+      ? tasks
+      : tasks.filter(t => agentSlug(t.assignee) === agentSlug(currentUser?.name)),
+    effectiveFilters
+  )
   // liveLeaderboard always returns an array (4 agents); dates already baked in — only apply agent filter here
   const filtLeaderboard = liveLeaderboard.filter(row =>
     !effectiveFilters.agent || effectiveFilters.agent === "all" || row.agent === effectiveFilters.agent
@@ -1826,12 +1831,45 @@ const AttendancePage = ({ dark, currentUser }) => {
 }
 
 // TASKS ————————————————————————————————————————
-const TasksPage = ({ dark, currentUser }) => {
+const TasksPage = ({ dark, currentUser, tasks = [], setTasks }) => {
   const { pendingTasks } = useTableData()
   const { agentLock, effectiveFilters, handleFilter, handleReset, filterData } = usePageFilters(currentUser)
 
-  const allFiltered = []  // No real task data source yet — columns show empty state
+  const role      = currentUser?.role ?? "Agent"
+  const canCreate = role === "HEAD"
+
+  // Role-based visibility: HEAD / Team Lead see all tasks; Agents see only their own
+  const visibleTasks = canViewAllAgents(role)
+    ? tasks
+    : tasks.filter(t => agentSlug(t.assignee) === agentSlug(currentUser?.name))
+
+  const allFiltered = filterData(visibleTasks)
   const byStatus = (s) => allFiltered.filter(t => t.status === s)
+
+  const [showModal, setShowModal] = useState(false)
+  const [form, setForm] = useState({ title: "", assignee: "", priority: "Medium", due: "" })
+
+  const createTask = () => {
+    if (!form.title.trim() || !form.assignee || !form.due) return
+    const t = {
+      id: Date.now(),
+      title: form.title.trim(),
+      assignee: form.assignee,
+      priority: form.priority,
+      due: form.due,
+      status: "Pending",
+      date: todayISO(),
+    }
+    setTasks?.(prev => [t, ...prev])
+    setForm({ title: "", assignee: "", priority: "Medium", due: "" })
+    setShowModal(false)
+  }
+
+  const modalInp = {
+    background: dark ? "rgba(255,255,255,0.06)" : "rgba(15,23,42,0.05)",
+    border: dark ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(148,163,184,0.22)",
+    color: dark ? "#e2e8f0" : "#0f172a",
+  }
 
   const cols = [
     { label: "Pending",     color: "#F59E0B", tasks: byStatus("Pending")     },
@@ -1842,7 +1880,7 @@ const TasksPage = ({ dark, currentUser }) => {
   return (
     <div>
       <PageHeader dark={dark} title="Tasks" subtitle="Manage and track team tasks and assignments."
-        actions={<Btn variant="primary" icon={Plus}>New Task</Btn>} />
+        actions={canCreate ? <Btn variant="primary" icon={Plus} onClick={() => setShowModal(true)}>New Task</Btn> : null} />
       <PageFilterBar config={FILTER_CONFIGS.tasks} dark={dark} agentLock={agentLock}
         onFilter={handleFilter} onReset={handleReset}
         onExport={() => downloadCSV(allFiltered, "tasks.csv")} />
@@ -1875,7 +1913,68 @@ const TasksPage = ({ dark, currentUser }) => {
             ))}
           </GlassCard>
         ))}
-      </div>
+     </div>
+
+      {canCreate && showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(2,6,23,0.55)", backdropFilter: "blur(2px)", WebkitBackdropFilter: "blur(2px)" }}
+          onClick={() => setShowModal(false)}>
+          <div className="w-full" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
+            <GlassCard dark={dark} className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-base font-bold" style={{ color: tokens.textPrimary(dark) }}>New Task</h3>
+                <button onClick={() => setShowModal(false)} style={{ color: tokens.textSecondary(dark) }}>
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-semibold mb-1.5" style={{ color: tokens.textSecondary(dark) }}>Task Title</label>
+                  <input type="text" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })}
+                    placeholder="Describe the task…"
+                    className="w-full text-sm rounded-xl outline-none py-2 px-3" style={modalInp} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1.5" style={{ color: tokens.textSecondary(dark) }}>Assign To</label>
+                  <select value={form.assignee} onChange={e => setForm({ ...form, assignee: e.target.value })}
+                    className="w-full text-sm rounded-xl outline-none py-2 px-3" style={modalInp}>
+                    <option value="">Select agent…</option>
+                    {DASHBOARD_ALLOWED_AGENTS.map(a => (
+                      <option key={a} value={a} style={{ background: dark ? "#1e293b" : "#fff", color: dark ? "#e2e8f0" : "#0f172a" }}>{a}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1.5" style={{ color: tokens.textSecondary(dark) }}>Priority</label>
+                  <select value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })}
+                    className="w-full text-sm rounded-xl outline-none py-2 px-3" style={modalInp}>
+                    {["High", "Medium", "Low"].map(p => (
+                      <option key={p} value={p} style={{ background: dark ? "#1e293b" : "#fff", color: dark ? "#e2e8f0" : "#0f172a" }}>{p}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1.5" style={{ color: tokens.textSecondary(dark) }}>Due Date</label>
+                  <input type="date" value={form.due} onChange={e => setForm({ ...form, due: e.target.value })}
+                    className="w-full text-sm rounded-xl outline-none py-2 px-3" style={modalInp} />
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-2 mt-5">
+                <button onClick={() => setShowModal(false)}
+                  className="px-4 py-2 text-sm font-bold rounded-xl"
+                  style={{ background: "transparent", color: tokens.textSecondary(dark), border: dark ? "1px solid rgba(255,255,255,0.1)" : "1px solid rgba(148,163,184,0.3)" }}>
+                  Cancel
+                </button>
+                <button onClick={createTask}
+                  className="px-4 py-2 text-sm font-bold rounded-xl"
+                  style={{ background: "linear-gradient(135deg,#3B82F6,#2563EB)", color: "#fff", boxShadow: "0 4px 12px rgba(59,130,246,0.35)" }}>
+                  Create Task
+                </button>
+              </div>
+            </GlassCard>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -3022,6 +3121,7 @@ export default function App() {
   const [dark, setDark] = useState(false)
   const [currentUser, setCurrentUser] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
+  const [tasks, setTasks] = useState([])
 
   useEffect(() => {
     // Restore session on page load / refresh
@@ -3080,11 +3180,11 @@ export default function App() {
   return (
     <AppLayout dark={dark} setDark={setDark} page={page} setPage={navigateTo}
       currentUser={currentUser} onLogout={handleLogout}>
-      {page === "dashboard"   && <DashboardPage   dark={dark} currentUser={currentUser} onNavigate={navigateTo} />}
+      {page === "dashboard"   && <DashboardPage   dark={dark} currentUser={currentUser} onNavigate={navigateTo} tasks={tasks} />}
       {page === "performance" && <PerformancePage  dark={dark} currentUser={currentUser} />}
       {page === "qa-audits"   && <QAPage           dark={dark} currentUser={currentUser} />}
       {page === "attendance"  && <AttendancePage   dark={dark} currentUser={currentUser} />}
-      {page === "tasks"       && <TasksPage        dark={dark} currentUser={currentUser} />}
+      {page === "tasks"       && <TasksPage        dark={dark} currentUser={currentUser} tasks={tasks} setTasks={setTasks} />}
       {page === "reports"     && <ReportsPage      dark={dark} currentUser={currentUser} />}
       {page === "leaderboard" && <LeaderboardPage  dark={dark} currentUser={currentUser} />}
       {page === "settings"    && <SettingsPage     dark={dark} currentUser={currentUser} onChangePassword={handleChangePassword} />}
