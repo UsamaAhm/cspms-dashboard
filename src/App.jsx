@@ -921,7 +921,56 @@ const LatestAuditsTable = ({ data, dark }) => (
   </GlassCard>
 )
 
-const LeaderboardTable = ({ data, dark, onViewAll }) => {
+// Original CSS/SVG animated flame — intensity 1 / 0.7 / 0.4 for ranks 1 / 2 / 3.
+// Sits behind content (negative z within an isolated card), clipped, never covers text.
+const Flame = ({ intensity = 1, dark = false }) => {
+  const tongues = [
+    { x: 8,  h: 30, d: 4.0, delay: 0.0 }, { x: 20, h: 40, d: 3.2, delay: 0.4 },
+    { x: 32, h: 32, d: 4.4, delay: 0.8 }, { x: 44, h: 44, d: 3.0, delay: 0.2 },
+    { x: 56, h: 34, d: 4.2, delay: 0.6 }, { x: 68, h: 42, d: 3.4, delay: 0.3 },
+    { x: 80, h: 31, d: 4.6, delay: 0.7 }, { x: 92, h: 38, d: 3.6, delay: 0.5 },
+  ]
+  const tongue = (x, h) =>
+    `M${x},50 C${x - 5},${50 - h * 0.4} ${x - 2.5},${50 - h * 0.78} ${x},${50 - h} C${x + 2.5},${50 - h * 0.78} ${x + 5},${50 - h * 0.4} ${x},50 Z`
+  const containerH = Math.round(26 + 30 * intensity)
+  return (
+    <div aria-hidden="true" style={{
+      position: "absolute", left: 0, right: 0, bottom: 0, height: containerH,
+      pointerEvents: "none", overflow: "hidden", zIndex: -1, opacity: dark ? 0.9 : 0.8,
+      maskImage: "linear-gradient(to top, #000 55%, transparent)",
+      WebkitMaskImage: "linear-gradient(to top, #000 55%, transparent)",
+    }}>
+      <style>{`
+        @keyframes cspmsFlameSway { 0%,100%{ transform: scaleY(1) scaleX(1) } 50%{ transform: scaleY(1.18) scaleX(0.93) } }
+        @keyframes cspmsFlameFlick { 0%,100%{ opacity:.75 } 50%{ opacity:1 } }
+        @keyframes cspmsGlowPulse { 0%,100%{ opacity:.5 } 50%{ opacity:.85 } }
+        @keyframes cspmsEmberRise { 0%{ transform: translateY(0) scale(1); opacity:.9 } 100%{ transform: translateY(-${containerH}px) scale(.2); opacity:0 } }
+        @media (prefers-reduced-motion: reduce) { .cspms-flame *, .cspms-glow, .cspms-ember { animation: none !important } }
+      `}</style>
+      <div className="cspms-glow" style={{
+        position: "absolute", left: "-5%", right: "-5%", bottom: -containerH * 0.4, height: containerH,
+        borderRadius: "50%", filter: "blur(8px)", animation: "cspmsGlowPulse 2.4s ease-in-out infinite",
+        background: `radial-gradient(ellipse at center, rgba(245,158,11,${0.5 * intensity}) 0%, rgba(239,68,68,${0.28 * intensity}) 40%, transparent 70%)`,
+      }} />
+      <svg className="cspms-flame" viewBox="0 0 100 50" preserveAspectRatio="none"
+        style={{ position: "absolute", inset: 0, width: "100%", height: "100%",
+          transform: `scaleY(${0.6 + 0.4 * intensity})`, transformOrigin: "bottom" }}>
+        <defs>
+          <linearGradient id="cspmsFlameBack" x1="0" y1="1" x2="0" y2="0">
+            <stop offset="0%" stopColor="#b91c1c" /><stop offset="45%" stopColor="#ef4444" /><stop offset="100%" stopColor="#f97316" />
+          </linearGradient>
+          <linearGradient id="cspmsFlameFront" x1="0" y1="1" x2="0" y2="0">
+            <stop offset="0%" stopColor="#f97316" /><stop offset="55%" stopColor="#fbbf24" /><stop offset="100%" stopColor="#fef08a" />
+          </linearGradient>
+        </defs>
+        {tongues.map((t, i) => (
+          <path key={"b" + i} d={tongue(t.x, t.h)} fill="url(#cspmsFlameBack)"
+            style={{ transformBox: "fill-box", transformOrigin: "center bottom",
+              animation: `cspmsFlameSway ${t.d}s ease-in-out ${t.delay}s infinite, cspmsFlameFlick ${t.d * 0.6}s ease-in-out ${t.delay}s infinite` }} />
+        ))}
+        {tongues.map((t, i) => (
+          <path key={"f" + i} d={tongue(t.x, t.h * 0.62)} fill="url(#cspmsFlameFront)"
+            style={{ transformBox: "fill-box", transformOrigin: "center bottom",
   const rankStyle = (i) => {
     if (i === 0) return { background: dark ? "rgba(245,158,11,0.12)" : "rgba(255,251,235,1)", border: "1px solid rgba(245,158,11,0.45)", boxShadow: "0 0 18px rgba(245,158,11,0.35)" }
     if (i === 1) return { background: dark ? "rgba(148,163,184,0.10)" : "rgba(248,250,252,1)", border: "1px solid rgba(148,163,184,0.40)", boxShadow: "0 0 12px rgba(148,163,184,0.22)" }
@@ -943,7 +992,9 @@ const LeaderboardTable = ({ data, dark, onViewAll }) => {
       ) : (
       <div className="space-y-2">
         {data.map((row, i) => (
-          <div key={row.rank} className="flex items-center gap-3 p-2.5 rounded-xl" style={rankStyle(i)}>
+          <div key={row.rank} className="flex items-center gap-3 p-2.5 rounded-xl"
+            style={{ position: "relative", overflow: "hidden", isolation: "isolate", ...rankStyle(i) }}>
+            {i < 3 && <Flame intensity={i === 0 ? 1 : i === 1 ? 0.7 : 0.4} dark={dark} />}
             <RankBadge i={i} />
             <Avatar name={row.agent} size="sm" />
             <div className="flex-1 min-w-0">
@@ -2305,12 +2356,12 @@ const LeaderboardPage = ({ dark, currentUser }) => {
       {/* Top 3 Podium */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
         {computedLeaderboard.slice(0,3).map((agent, i) => (
-          <GlassCard key={i} dark={dark} className="p-6 text-center"
-            style={
-              i === 0 ? { border: "1px solid rgba(245,158,11,0.5)",  boxShadow: "0 0 0 1px rgba(245,158,11,0.5), 0 10px 34px rgba(245,158,11,0.30)" } :
-              i === 1 ? { border: "1px solid rgba(148,163,184,0.45)", boxShadow: "0 8px 26px rgba(148,163,184,0.22)" } :
-              i === 2 ? { border: "1px solid rgba(180,120,60,0.4)",   boxShadow: "0 6px 20px rgba(180,120,60,0.18)" } : {}
-            }>
+          <GlassCard key={i} dark={dark} className="p-6 text-center relative overflow-hidden"
+            style={{ isolation: "isolate",
+              ...(i === 0 ? { border: "1px solid rgba(245,158,11,0.5)",  boxShadow: "0 0 0 1px rgba(245,158,11,0.5), 0 10px 34px rgba(245,158,11,0.30)" } :
+                 i === 1 ? { border: "1px solid rgba(148,163,184,0.45)", boxShadow: "0 8px 26px rgba(148,163,184,0.22)" } :
+                 i === 2 ? { border: "1px solid rgba(180,120,60,0.4)",   boxShadow: "0 6px 20px rgba(180,120,60,0.18)" } : {}) }}>
+            <Flame intensity={i === 0 ? 1 : i === 1 ? 0.7 : 0.4} dark={dark} />
             <div className="text-3xl mb-3" style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.25))" }}>{medals[i]}</div>
             <div className="flex justify-center mb-3"><Avatar name={agent.agent} size="lg" /></div>
             <p className="text-base font-extrabold mb-0.5"
