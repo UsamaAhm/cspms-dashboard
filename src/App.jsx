@@ -922,7 +922,6 @@ const LatestAuditsTable = ({ data, dark }) => (
 )
 
 // Original CSS/SVG animated flame — intensity 1 / 0.7 / 0.4 for ranks 1 / 2 / 3.
-// Sits behind content (negative z within an isolated card), clipped, never covers text.
 const Flame = ({ intensity = 1, dark = false }) => {
   const tongues = [
     { x: 8,  h: 30, d: 4.0, delay: 0.0 }, { x: 20, h: 40, d: 3.2, delay: 0.4 },
@@ -971,6 +970,21 @@ const Flame = ({ intensity = 1, dark = false }) => {
         {tongues.map((t, i) => (
           <path key={"f" + i} d={tongue(t.x, t.h * 0.62)} fill="url(#cspmsFlameFront)"
             style={{ transformBox: "fill-box", transformOrigin: "center bottom",
+              animation: `cspmsFlameSway ${t.d * 0.85}s ease-in-out ${t.delay + 0.15}s infinite, cspmsFlameFlick ${t.d * 0.5}s ease-in-out ${t.delay}s infinite` }} />
+        ))}
+      </svg>
+      {intensity >= 0.4 && [12, 40, 68, 88].slice(0, Math.round(2 + 2 * intensity)).map((x, i) => (
+        <span key={i} className="cspms-ember" style={{
+          position: "absolute", bottom: 4, left: `${x}%`, width: 3, height: 3, borderRadius: "50%",
+          background: "#fde68a", boxShadow: "0 0 6px rgba(251,191,36,0.9)",
+          animation: `cspmsEmberRise ${2.6 + i * 0.4}s linear ${i * 0.5}s infinite`,
+        }} />
+      ))}
+    </div>
+  )
+}
+
+const LeaderboardTable = ({ data, dark, onViewAll }) => {
   const rankStyle = (i) => {
     if (i === 0) return { background: dark ? "rgba(245,158,11,0.12)" : "rgba(255,251,235,1)", border: "1px solid rgba(245,158,11,0.45)", boxShadow: "0 0 18px rgba(245,158,11,0.35)" }
     if (i === 1) return { background: dark ? "rgba(148,163,184,0.10)" : "rgba(248,250,252,1)", border: "1px solid rgba(148,163,184,0.40)", boxShadow: "0 0 12px rgba(148,163,184,0.22)" }
