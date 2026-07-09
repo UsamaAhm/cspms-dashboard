@@ -1420,8 +1420,7 @@ const DashboardPage = ({ dark, currentUser, onNavigate, tasks = [] }) => {
       })
       const weeklyPerformance = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d => wMap[d])
       const mKpi = {}
-      ;(liveCsat ?? []).forEach(c => {
-       ;(chCsat).forEach(c => {
+      ;(chCsat).forEach(c => {
         const d = safeDate(c.date); if (!d) return
         if (!csatIsValid(c.rating)) return
         const m = MONTHS[new Date(d).getMonth()]
