@@ -693,11 +693,6 @@ const PageFilterBar = ({ config, dark = false, onFilter, onReset, onExport, agen
           </div>
         )}
         <div className="flex items-center gap-2 pb-0.5">
-          <button onClick={() => onFilter?.({ ...values, search })}
-            style={{ background:"linear-gradient(135deg,#3B82F6,#2563EB)", color:"#fff", boxShadow:"0 4px 12px rgba(59,130,246,0.35)" }}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl">
-            <Filter size={11} />Filter
-          </button>
           <button onClick={reset}
             style={{ background:"transparent", color: lc, border: dark?"1px solid rgba(255,255,255,0.1)":"1px solid rgba(148,163,184,0.3)" }}
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl">
@@ -1712,7 +1707,7 @@ const QAPage = ({ dark, currentUser }) => {
         </div>
       )}
       <PageHeader dark={dark} title="QA Audits" subtitle="Quality assurance audit management and tracking."
-        actions={<Btn variant="primary" icon={Plus} onClick={() => qaFileRef.current?.click()}>New Audit</Btn>} />
+        actions={currentUser?.role === "HEAD" ? <Btn variant="primary" icon={Plus} onClick={() => qaFileRef.current?.click()}>New Audit</Btn> : null} />
       <PageFilterBar config={FILTER_CONFIGS["qa-audits"]} dark={dark} agentLock={agentLock}
         onFilter={handleFilter} onReset={handleReset}
         onExport={() => downloadCSV(filtAudits, "qa-audits.csv")} />
