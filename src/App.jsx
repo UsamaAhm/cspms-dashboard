@@ -1084,22 +1084,76 @@ const PAGE_LABELS = {
   leaderboard: "Leaderboard", settings: "Settings", profile: "Profile",
 }
 
-const NOTIFICATIONS = [
-  { id: 1, text: "QA Audit completed — Muhammad Junaid scored 94%",  time: "5m ago",  unread: true,  page: "qa-audits"   },
-  { id: 2, text: "Sufiyan Merchant QA score below threshold (62%)",  time: "1h ago",  unread: true,  page: "performance" },
-  { id: 3, text: "Monthly performance report is ready to review",    time: "3h ago",  unread: false, page: "reports"     },
-]
+// Real notifications built from live task data (no dummy items)
+const buildNotifications = (user, tasks = [], isChampion = false) => {
+  const list = []
+  const isAgent = (user?.role ?? "") === "Agent"
+  const mine = isAgent ? tasks.filter(t => agentSlug(t.assignee) === agentSlug(user?.name)) : tasks
+  const today = todayISO()
+  const dueDays = (due) => {
+    const d = safeDate(due); if (!d) return null
+    return Math.round((new Date(d) - new Date(today)) / 86400000)
+  }
+  mine.forEach(t => {
+    if (t.status === "Completed") return
+    const dd = dueDays(t.due)
+    if (dd !== null && dd < 0) {
+      list.push({ id: "ov-" + t.id, text: `Task overdue: ${t.title}`, time: `Due ${t.due}`, unread: true, page: "tasks" })
+    } else if (dd !== null && dd <= 2) {
+      list.push({ id: "due-" + t.id, text: `Task due soon: ${t.title}`, time: `Due ${t.due}`, unread: true, page: "tasks" })
+    } else if (isAgent && t.status === "Pending") {
+      list.push({ id: "new-" + t.id, text: `New task assigned: ${t.title}`, time: `Due ${t.due}`, unread: true, page: "tasks" })
+    }
+  })
+  if (isAgent && isChampion) {
+    list.push({ id: "champ", text: "You are the leaderboard champion 🏆", time: "This month", unread: true, page: "leaderboard" })
+  }
+  return list
+}
 
-const TopNav = ({ dark, setDark, page, setPage, currentUser, onLogout }) => {
+const TopNav = ({ dark, setDark, page, setPage, currentUser, onLogout, tasks = [] }) => {
   const [notifOpen,  setNotifOpen]  = useState(false)
   const [profilOpen, setProfilOpen] = useState(false)
-  const [notifs,     setNotifs]     = useState(NOTIFICATIONS)
+  const [notifs,     setNotifs]     = useState([])
+  const { tickets: nTickets, csat: nCsat, loaded: nLoaded, error: nError } = useLiveData()
   const notifRef  = useRef(null)
   const profilRef = useRef(null)
   const close = () => { setNotifOpen(false); setProfilOpen(false) }
   const role   = currentUser?.role ?? ""
   const initials = currentUser?.initials ?? "??"
   const userName  = currentUser?.name  ?? "User"
+
+  // Is the logged-in agent currently ranked #1? (same aggregation as Leaderboard)
+  const isChampion = (() => {
+    if (role !== "Agent") return false
+    if (!(nLoaded && !nError && nTickets !== null)) return false
+    const from = monthStartISO(), to = todayISO()
+    const byAgent = {}
+    DASHBOARD_ALLOWED_AGENTS.forEach(name => { byAgent[name] = { agent: name, emails: 0, great: 0, total: 0 } })
+    ;(nTickets ?? []).forEach(t => {
+      const name = normAgentName(t.agent_name || t.agent || "")
+      if (!DASHBOARD_ALLOWED_AGENTS.includes(name)) return
+      const d = safeDate(t.date || t.created_at || ""); if (d && (d < from || d > to)) return
+      byAgent[name].emails++
+      const raw = (t.customer_rating || "").toString()
+      if (csatIsValid(raw)) { byAgent[name].total++; if (csatIsGreat(raw)) byAgent[name].great++ }
+    })
+    ;(nCsat ?? []).forEach(c => {
+      const name = normAgentName(c.agent_name || "")
+      if (!DASHBOARD_ALLOWED_AGENTS.includes(name)) return
+      if (!csatIsValid(c.rating)) return
+      const d = safeDate(c.date || c.created_at || ""); if (d && (d < from || d > to)) return
+      byAgent[name].total++; if (csatIsGreat(c.rating)) byAgent[name].great++
+    })
+    const rows = Object.values(byAgent)
+      .map(a => ({ agent: a.agent, emails: a.emails, kpi: a.total ? a.great / a.total * 100 : 0 }))
+      .sort((a, b) => b.kpi - a.kpi || b.emails - a.emails)
+    return rows[0] && agentSlug(rows[0].agent) === agentSlug(userName)
+  })()
+
+  useEffect(() => {
+    setNotifs(buildNotifications(currentUser, tasks, isChampion))
+  }, [currentUser, tasks, isChampion])
 
   const hasUnread = notifs.some(n => n.unread)
 
@@ -1162,7 +1216,9 @@ const TopNav = ({ dark, setDark, page, setPage, currentUser, onLogout }) => {
                 </button>
               )}
             </div>
-            {notifs.map(n => (
+            {notifs.length === 0 ? (
+              <div className="px-4 py-6 text-center text-sm" style={{ color: tokens.textMuted(dark) }}>No notifications</div>
+            ) : notifs.map(n => (
               <button key={n.id} onClick={() => handleNotifClick(n)}
                 className="w-full flex gap-3 px-4 py-3 text-left transition-all"
                 style={{
@@ -1227,7 +1283,7 @@ const TopNav = ({ dark, setDark, page, setPage, currentUser, onLogout }) => {
 // ─────────────────────────────────────────────
 // APP LAYOUT — shell wrapping Sidebar + TopNav
 // ─────────────────────────────────────────────
-const AppLayout = ({ dark, setDark, page, setPage, currentUser, onLogout, children }) => {
+const AppLayout = ({ dark, setDark, page, setPage, currentUser, onLogout, tasks = [], children }) => {
   const [collapsed, setCollapsed] = useState(false)
   return (
     <div className="flex h-screen overflow-hidden"
@@ -1236,7 +1292,7 @@ const AppLayout = ({ dark, setDark, page, setPage, currentUser, onLogout, childr
         collapsed={collapsed} setCollapsed={setCollapsed} currentUser={currentUser} />
       <div className="flex flex-col flex-1 min-w-0">
         <TopNav dark={dark} setDark={setDark} page={page} setPage={setPage}
-          currentUser={currentUser} onLogout={onLogout} />
+          currentUser={currentUser} onLogout={onLogout} tasks={tasks} />
         <main className="flex-1 overflow-y-auto p-5">
           {children}
         </main>
@@ -1469,7 +1525,7 @@ const DashboardPage = ({ dark, currentUser, onNavigate, tasks = [] }) => {
     { ...activeKpi.qa,         icon: Shield,        color: "emerald" },
     { ...activeKpi.attendance, icon: UserCheck,     color: "rose"    },
   ]
-  const showCharts = !hasActiveFilter || !allTableEmpty
+  const showCharts = !hasActiveFilter || !allTableEmpty || !!agentLock
   return (
     <div>
       <PageHeader dark={dark} title="Dashboard"
@@ -1512,7 +1568,7 @@ const DashboardPage = ({ dark, currentUser, onNavigate, tasks = [] }) => {
           </div>
         </>
       )}
-      {hasFilters && allTableEmpty ? (
+      {hasFilters && allTableEmpty && !agentLock ? (
         <GlassCard dark={dark} className="p-5 mb-4">
           <EmptyState dark={dark} title="No records found for selected filters"
             description="Try adjusting your date range, agent, channel, or search term."
@@ -3305,7 +3361,7 @@ export default function App() {
 
   return (
     <AppLayout dark={dark} setDark={setDark} page={page} setPage={navigateTo}
-      currentUser={currentUser} onLogout={handleLogout}>
+      currentUser={currentUser} onLogout={handleLogout} tasks={tasks}>
       {page === "dashboard"   && <DashboardPage   dark={dark} currentUser={currentUser} onNavigate={navigateTo} tasks={tasks} />}
       {page === "performance" && <PerformancePage  dark={dark} currentUser={currentUser} />}
       {page === "qa-audits"   && <QAPage           dark={dark} currentUser={currentUser} />}
