@@ -1849,6 +1849,9 @@ const TasksPage = ({ dark, currentUser, tasks = [], setTasks }) => {
   const [showModal, setShowModal] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState({ title: "", assignee: "", priority: "Medium", due: "", status: "Pending" })
+  const [completeFor, setCompleteFor] = useState(null)
+  const [comment, setComment] = useState("")
+  const [commentError, setCommentError] = useState("")
 
   const blankForm = { title: "", assignee: "", priority: "Medium", due: "", status: "Pending" }
 
@@ -1883,6 +1886,21 @@ const TasksPage = ({ dark, currentUser, tasks = [], setTasks }) => {
 
   const deleteTask   = (id) => setTasks?.(prev => prev.filter(t => t.id !== id))
   const updateStatus = (id, status) => setTasks?.(prev => prev.map(t => t.id === id ? { ...t, status } : t))
+
+  // Agent status change: a comment is required only when marking a task Completed
+  const requestStatusChange = (task, next) => {
+    if (next === "Completed") { setCompleteFor(task); setComment(""); setCommentError("") }
+    else updateStatus(task.id, next)
+  }
+  const cancelComplete = () => { setCompleteFor(null); setComment(""); setCommentError("") }
+  const confirmComplete = () => {
+    if (!comment.trim()) {
+      setCommentError("Please add a completion comment before marking this task as completed.")
+      return
+    }
+    setTasks?.(prev => prev.map(t => t.id === completeFor.id ? { ...t, status: "Completed", completionComment: comment.trim() } : t))
+    cancelComplete()
+  }
 
   const modalInp = {
     background: dark ? "rgba(255,255,255,0.06)" : "rgba(15,23,42,0.05)",
@@ -1928,6 +1946,11 @@ const TasksPage = ({ dark, currentUser, tasks = [], setTasks }) => {
                   <p className="text-xs" style={{ color: tokens.textSecondary(dark) }}>Due {task.due} · {task.assignee}</p>
                   <Badge label={task.priority} variant={task.priority.toLowerCase()} />
                 </div>
+                {task.completionComment && (
+                  <p className="text-xs mt-2 italic" style={{ color: tokens.textSecondary(dark) }}>
+                    Completion note: {task.completionComment}
+                  </p>
+                )}
                 {canCreate ? (
                   <div className="flex items-center gap-3 mt-2 pt-2"
                     style={{ borderTop: dark ? "1px solid rgba(255,255,255,0.06)" : "1px solid rgba(148,163,184,0.16)" }}>
@@ -1937,7 +1960,7 @@ const TasksPage = ({ dark, currentUser, tasks = [], setTasks }) => {
                 ) : (
                   <div className="mt-2 pt-2"
                     style={{ borderTop: dark ? "1px solid rgba(255,255,255,0.06)" : "1px solid rgba(148,163,184,0.16)" }}>
-                    <select value={task.status} onChange={e => updateStatus(task.id, e.target.value)}
+                    <select value={task.status} onChange={e => requestStatusChange(task, e.target.value)}
                       className="text-xs rounded-lg outline-none py-1 px-2" style={modalInp}>
                       {["Pending", "In Progress", "Completed"].map(s => (
                         <option key={s} value={s} style={{ background: dark ? "#1e293b" : "#fff", color: dark ? "#e2e8f0" : "#0f172a" }}>{s}</option>
@@ -2014,6 +2037,45 @@ const TasksPage = ({ dark, currentUser, tasks = [], setTasks }) => {
                   className="px-4 py-2 text-sm font-bold rounded-xl"
                   style={{ background: "linear-gradient(135deg,#3B82F6,#2563EB)", color: "#fff", boxShadow: "0 4px 12px rgba(59,130,246,0.35)" }}>
                   {editingId != null ? "Save Changes" : "Create Task"}
+                </button>
+              </div>
+            </GlassCard>
+          </div>
+        </div>
+      )}
+
+      {!canCreate && completeFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(2,6,23,0.55)", backdropFilter: "blur(2px)", WebkitBackdropFilter: "blur(2px)" }}
+          onClick={cancelComplete}>
+          <div className="w-full" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
+            <GlassCard dark={dark} className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-base font-bold" style={{ color: tokens.textPrimary(dark) }}>Complete Task</h3>
+                <button onClick={cancelComplete} style={{ color: tokens.textSecondary(dark) }}>
+                  <X size={18} />
+                </button>
+              </div>
+              <p className="text-xs mb-3" style={{ color: tokens.textSecondary(dark) }}>{completeFor.title}</p>
+              <div>
+                <label className="block text-xs font-semibold mb-1.5" style={{ color: tokens.textSecondary(dark) }}>Completion Comment</label>
+                <textarea value={comment} onChange={e => { setComment(e.target.value); if (commentError) setCommentError("") }}
+                  rows={3} placeholder="Describe how this task was completed…"
+                  className="w-full text-sm rounded-xl outline-none py-2 px-3" style={modalInp} />
+              </div>
+              {commentError && (
+                <p className="text-xs mt-2" style={{ color: "#EF4444" }}>{commentError}</p>
+              )}
+              <div className="flex items-center justify-end gap-2 mt-5">
+                <button onClick={cancelComplete}
+                  className="px-4 py-2 text-sm font-bold rounded-xl"
+                  style={{ background: "transparent", color: tokens.textSecondary(dark), border: dark ? "1px solid rgba(255,255,255,0.1)" : "1px solid rgba(148,163,184,0.3)" }}>
+                  Cancel
+                </button>
+                <button onClick={confirmComplete}
+                  className="px-4 py-2 text-sm font-bold rounded-xl"
+                  style={{ background: "linear-gradient(135deg,#10B981,#059669)", color: "#fff", boxShadow: "0 4px 12px rgba(16,185,129,0.35)" }}>
+                  Mark Completed
                 </button>
               </div>
             </GlassCard>
