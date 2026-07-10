@@ -921,69 +921,39 @@ const LatestAuditsTable = ({ data, dark }) => (
   </GlassCard>
 )
 
-// Original CSS/SVG animated flame — intensity 1 / 0.7 / 0.4 for ranks 1 / 2 / 3.
+// Premium live-fire GLOW only — no flame shapes. Soft heat aura under the name area.
+// intensity 1 / 0.7 / 0.4 for ranks 1 / 2 / 3; ranks 4+ render no Flame at all.
 const Flame = ({ intensity = 1, dark = false }) => {
-  const tongues = [
-    { x: 8,  h: 30, d: 4.0, delay: 0.0 }, { x: 20, h: 40, d: 3.2, delay: 0.4 },
-    { x: 32, h: 32, d: 4.4, delay: 0.8 }, { x: 44, h: 44, d: 3.0, delay: 0.2 },
-    { x: 56, h: 34, d: 4.2, delay: 0.6 }, { x: 68, h: 42, d: 3.4, delay: 0.3 },
-    { x: 80, h: 31, d: 4.6, delay: 0.7 }, { x: 92, h: 38, d: 3.6, delay: 0.5 },
-  ]
-  const tongue = (x, h) =>
-    `M${x},50 C${x - 5},${50 - h * 0.4} ${x - 2.5},${50 - h * 0.78} ${x},${50 - h} C${x + 2.5},${50 - h * 0.78} ${x + 5},${50 - h * 0.4} ${x},50 Z`
-  const containerH = Math.round(26 + 30 * intensity)
+  const h = Math.round(20 + 22 * intensity)
   return (
     <div aria-hidden="true" style={{
-      position: "absolute", left: 0, right: 0, bottom: 0, height: containerH,
-      pointerEvents: "none", overflow: "hidden", zIndex: -1, opacity: dark ? 0.9 : 0.8,
-      maskImage: "linear-gradient(to top, #000 55%, transparent)",
-      WebkitMaskImage: "linear-gradient(to top, #000 55%, transparent)",
+      position: "absolute", left: 0, right: 0, bottom: 0, height: h + 14,
+      pointerEvents: "none", overflow: "hidden", zIndex: -1,
     }}>
       <style>{`
-        @keyframes cspmsFlameSway { 0%,100%{ transform: scaleY(1) scaleX(1) } 50%{ transform: scaleY(1.18) scaleX(0.93) } }
-        @keyframes cspmsFlameFlick { 0%,100%{ opacity:.75 } 50%{ opacity:1 } }
-        @keyframes cspmsGlowPulse { 0%,100%{ opacity:.5 } 50%{ opacity:.85 } }
-        @keyframes cspmsEmberRise { 0%{ transform: translateY(0) scale(1); opacity:.9 } 100%{ transform: translateY(-${containerH}px) scale(.2); opacity:0 } }
-        @media (prefers-reduced-motion: reduce) { .cspms-flame *, .cspms-glow, .cspms-ember { animation: none !important } }
+        @keyframes cspmsHeatFlick { 0%,100%{ opacity:.55 } 40%{ opacity:.92 } 65%{ opacity:.7 } 80%{ opacity:.85 } }
+        @keyframes cspmsHeatShimmer { 0%,100%{ transform: translateX(-3%) scaleY(1) } 50%{ transform: translateX(3%) scaleY(1.12) } }
+        @media (prefers-reduced-motion: reduce) { .cspms-heat { animation: none !important } }
       `}</style>
-      <div className="cspms-glow" style={{
-        position: "absolute", left: "-5%", right: "-5%", bottom: -containerH * 0.4, height: containerH,
-        borderRadius: "50%", filter: "blur(8px)", animation: "cspmsGlowPulse 2.4s ease-in-out infinite",
-        background: `radial-gradient(ellipse at center, rgba(245,158,11,${0.5 * intensity}) 0%, rgba(239,68,68,${0.28 * intensity}) 40%, transparent 70%)`,
+      <div className="cspms-heat" style={{
+        position: "absolute", left: "-8%", right: "-8%", bottom: -h * 0.5, height: h * 1.6,
+        borderRadius: "50%", transformOrigin: "bottom",
+        filter: `blur(${10 + 6 * intensity}px)`,
+        opacity: (dark ? 0.55 : 0.42) * (0.5 + 0.5 * intensity),
+        background: `radial-gradient(ellipse at 50% 100%, rgba(251,191,36,${0.55 * intensity}) 0%, rgba(249,115,22,${0.4 * intensity}) 35%, rgba(239,68,68,${0.22 * intensity}) 60%, transparent 78%)`,
+        animation: "cspmsHeatFlick 2.6s ease-in-out infinite, cspmsHeatShimmer 5s ease-in-out infinite",
       }} />
-      <svg className="cspms-flame" viewBox="0 0 100 50" preserveAspectRatio="none"
-        style={{ position: "absolute", inset: 0, width: "100%", height: "100%",
-          transform: `scaleY(${0.6 + 0.4 * intensity})`, transformOrigin: "bottom" }}>
-        <defs>
-          <linearGradient id="cspmsFlameBack" x1="0" y1="1" x2="0" y2="0">
-            <stop offset="0%" stopColor="#b91c1c" /><stop offset="45%" stopColor="#ef4444" /><stop offset="100%" stopColor="#f97316" />
-          </linearGradient>
-          <linearGradient id="cspmsFlameFront" x1="0" y1="1" x2="0" y2="0">
-            <stop offset="0%" stopColor="#f97316" /><stop offset="55%" stopColor="#fbbf24" /><stop offset="100%" stopColor="#fef08a" />
-          </linearGradient>
-        </defs>
-        {tongues.map((t, i) => (
-          <path key={"b" + i} d={tongue(t.x, t.h)} fill="url(#cspmsFlameBack)"
-            style={{ transformBox: "fill-box", transformOrigin: "center bottom",
-              animation: `cspmsFlameSway ${t.d}s ease-in-out ${t.delay}s infinite, cspmsFlameFlick ${t.d * 0.6}s ease-in-out ${t.delay}s infinite` }} />
-        ))}
-        {tongues.map((t, i) => (
-          <path key={"f" + i} d={tongue(t.x, t.h * 0.62)} fill="url(#cspmsFlameFront)"
-            style={{ transformBox: "fill-box", transformOrigin: "center bottom",
-              animation: `cspmsFlameSway ${t.d * 0.85}s ease-in-out ${t.delay + 0.15}s infinite, cspmsFlameFlick ${t.d * 0.5}s ease-in-out ${t.delay}s infinite` }} />
-        ))}
-      </svg>
-      {intensity >= 0.4 && [12, 40, 68, 88].slice(0, Math.round(2 + 2 * intensity)).map((x, i) => (
-        <span key={i} className="cspms-ember" style={{
-          position: "absolute", bottom: 4, left: `${x}%`, width: 3, height: 3, borderRadius: "50%",
-          background: "#fde68a", boxShadow: "0 0 6px rgba(251,191,36,0.9)",
-          animation: `cspmsEmberRise ${2.6 + i * 0.4}s linear ${i * 0.5}s infinite`,
-        }} />
-      ))}
+      <div className="cspms-heat" style={{
+        position: "absolute", left: "18%", right: "18%", bottom: -h * 0.35, height: h,
+        borderRadius: "50%", transformOrigin: "bottom",
+        filter: `blur(${6 + 4 * intensity}px)`,
+        opacity: (dark ? 0.6 : 0.5) * (0.5 + 0.5 * intensity),
+        background: `radial-gradient(ellipse at 50% 100%, rgba(254,240,138,${0.6 * intensity}) 0%, rgba(251,146,60,${0.4 * intensity}) 45%, transparent 72%)`,
+        animation: "cspmsHeatFlick 1.9s ease-in-out infinite, cspmsHeatShimmer 4.2s ease-in-out infinite reverse",
+      }} />
     </div>
   )
 }
-
 const LeaderboardTable = ({ data, dark, onViewAll }) => {
   const rankStyle = (i) => {
     if (i === 0) return { background: dark ? "rgba(245,158,11,0.12)" : "rgba(255,251,235,1)", border: "1px solid rgba(245,158,11,0.45)", boxShadow: "0 0 18px rgba(245,158,11,0.35)" }
