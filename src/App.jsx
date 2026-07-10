@@ -2342,14 +2342,14 @@ const LeaderboardPage = ({ dark, currentUser }) => {
         {computedLeaderboard.slice(0,3).map((agent, i) => (
           <GlassCard key={i} dark={dark} className="p-6 text-center relative overflow-hidden"
             style={{ isolation: "isolate",
-              ...(i === 0 ? { border: "1px solid rgba(245,158,11,0.5)",  boxShadow: "0 0 0 1px rgba(245,158,11,0.5), 0 10px 34px rgba(245,158,11,0.30)" } :
-                 i === 1 ? { border: "1px solid rgba(148,163,184,0.45)", boxShadow: "0 8px 26px rgba(148,163,184,0.22)" } :
-                 i === 2 ? { border: "1px solid rgba(180,120,60,0.4)",   boxShadow: "0 6px 20px rgba(180,120,60,0.18)" } : {}) }}>
-            <Flame intensity={i === 0 ? 1 : i === 1 ? 0.7 : 0.4} dark={dark} />
-            <div className="text-3xl mb-3" style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.25))" }}>{medals[i]}</div>
+              ...(agent.rank === 1 ? { border: "1px solid rgba(245,158,11,0.55)", boxShadow: "0 0 0 1px rgba(245,158,11,0.5), 0 10px 34px rgba(245,158,11,0.32)" } :
+                 agent.rank === 2 ? { border: "1px solid rgba(148,163,184,0.70)", boxShadow: "0 0 0 1px rgba(148,163,184,0.5), 0 9px 28px rgba(148,163,184,0.42)" } :
+                 agent.rank === 3 ? { border: "1px solid rgba(180,120,60,0.50)",  boxShadow: "0 6px 18px rgba(180,120,60,0.26)" } : {}) }}>
+            {agent.rank <= 3 && <Flame intensity={agent.rank === 1 ? 1 : agent.rank === 2 ? 0.7 : 0.4} dark={dark} />}
+            <div className="text-3xl mb-3" style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.25))" }}>{medals[agent.rank - 1]}</div>
             <div className="flex justify-center mb-3"><Avatar name={agent.agent} size="lg" /></div>
             <p className="text-base font-extrabold mb-0.5"
-              style={{ color: i === 0 ? (dark ? "#FCD34D" : "#B45309") : tokens.textPrimary(dark), textShadow: i === 0 ? "0 0 12px rgba(245,158,11,0.4)" : "none" }}>{agent.agent}</p>
+              style={{ color: agent.rank === 1 ? (dark ? "#FCD34D" : "#B45309") : tokens.textPrimary(dark), textShadow: agent.rank === 1 ? "0 0 12px rgba(245,158,11,0.4)" : "none" }}>{agent.agent}</p>
             <p className="text-2xl font-black" style={{ color: "#3B82F6" }}><FlickerNum loading={!liveLoaded} value={agent.kpi} unit="%" /></p>
             <p className="text-xs mb-3" style={{ color: tokens.textSecondary(dark) }}>Overall KPI</p>
             <div className="flex justify-center gap-6">
@@ -2377,15 +2377,18 @@ const LeaderboardPage = ({ dark, currentUser }) => {
               {computedLeaderboard.map((row, i) => (
                 <tr key={row.rank} style={{
                   borderTop: `1px solid ${dark ? "rgba(255,255,255,0.05)" : "#f1f5f9"}`,
-                  background: i === 0 ? (dark ? "rgba(245,158,11,0.08)" : "rgba(255,251,235,0.7)")
-                            : i === 1 ? (dark ? "rgba(148,163,184,0.06)" : "rgba(248,250,252,0.7)")
-                            : i === 2 ? (dark ? "rgba(180,120,60,0.06)"  : "rgba(254,247,240,0.7)") : "transparent",
+                  background: row.rank === 1 ? (dark ? "rgba(245,158,11,0.10)" : "rgba(255,247,224,0.9)")
+                            : row.rank === 2 ? (dark ? "rgba(148,163,184,0.12)" : "rgba(226,232,240,0.75)")
+                            : row.rank === 3 ? (dark ? "rgba(180,120,60,0.10)"  : "rgba(250,238,225,0.75)") : "transparent",
+                  boxShadow: row.rank === 1 ? "inset 4px 0 0 #F59E0B"
+                           : row.rank === 2 ? "inset 4px 0 0 #94A3B8"
+                           : row.rank === 3 ? "inset 3px 0 0 #B4783C" : "none",
                 }}>
                   <td className="py-3 pr-4 text-lg">
-                    {i < 3
-                      ? <span style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.25))" }}>{["🥇","🥈","🥉"][i]}</span>
+                    {row.rank <= 3
+                      ? <span style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.25))" }}>{["🥇","🥈","🥉"][row.rank - 1]}</span>
                       : <span className="inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold"
-                          style={{ background: dark ? "rgba(255,255,255,0.08)" : "rgba(15,23,42,0.06)", color: tokens.textSecondary(dark) }}>{i + 1}</span>}
+                          style={{ background: dark ? "rgba(255,255,255,0.08)" : "rgba(15,23,42,0.06)", color: tokens.textSecondary(dark) }}>{row.rank}</span>}
                   </td>
                   <td className="py-3 pr-4">
                     <div className="flex items-center gap-2">
